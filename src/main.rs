@@ -5,16 +5,20 @@ use anyhow::Context;
 use clap::Parser;
 use dashmap::DashMap;
 use env_logger::Env;
+use redis::Commands;
 use reqwest::Url;
-use serde::ser::SerializeMap;
-use serde::{Deserialize, Serializer};
 use serde_json::{json, Value};
 
 use crate::cli::Cli;
 use crate::rpc_cache_handler::RpcCacheHandler;
+use lazy_static::lazy_static;
 
 mod cli;
 mod rpc_cache_handler;
+
+lazy_static! {
+    static ref REDIS: redis::Client = redis::Client::open("redis://localhost/").unwrap();
+}
 
 struct ChainState {
     rpc_url: Url,
@@ -28,54 +32,17 @@ impl ChainState {
             cache_entries: Default::default(),
         }
     }
-
-    fn dump<W: std::io::Write>(&self, w: W) -> anyhow::Result<()> {
-        let mut se = serde_json::Serializer::new(w);
-        let mut map_se = se.serialize_map(None)?;
-
-        for (method, cache_entry) in self
-            .cache_entries
-            .iter()
-            .filter(|(_, entries)| !entries.cache_store.is_empty())
-        {
-            map_se.serialize_entry(method, &cache_entry.cache_store)?;
-        }
-
-        map_se.end()?;
-
-        Ok(())
-    }
-
-    fn load<R: std::io::Read>(&mut self, r: R) -> anyhow::Result<()> {
-        let mut de = serde_json::Deserializer::from_reader(r);
-        let map = HashMap::<String, DashMap<String, String>>::deserialize(&mut de)?;
-
-        for (method, cache_store) in map {
-            let entry = match self.cache_entries.get_mut(&method) {
-                None => continue,
-                Some(entry) => entry,
-            };
-
-            entry.cache_store = cache_store;
-        }
-
-        Ok(())
-    }
 }
 
 pub type ChainStorePersistedCache = HashMap<String, DashMap<String, String>>;
 
 struct CacheEntry {
     handler: Box<dyn RpcCacheHandler>,
-    cache_store: DashMap<String, String>,
 }
 
 impl CacheEntry {
     fn new(handler: Box<dyn RpcCacheHandler>) -> Self {
-        Self {
-            handler,
-            cache_store: Default::default(),
-        }
+        Self { handler }
     }
 }
 
@@ -104,11 +71,7 @@ async fn request_rpc(rpc_url: Url, body: &Value) -> anyhow::Result<Value> {
     Ok(result)
 }
 
-fn read_cache(
-    handler: &dyn RpcCacheHandler,
-    cache_store: &DashMap<String, String>,
-    params: &Value,
-) -> anyhow::Result<CacheStatus> {
+fn read_cache(handler: &dyn RpcCacheHandler, params: &Value) -> anyhow::Result<CacheStatus> {
     let cache_key = handler
         .extract_cache_key(params)
         .context("fail to extract cache key")?;
@@ -118,11 +81,11 @@ fn read_cache(
         None => return Ok(CacheStatus::NotAvailable),
     };
 
-    let value = cache_store.get(&cache_key);
+    let value: Option<String> = REDIS.get_connection().unwrap().get(&cache_key).unwrap();
 
     Ok(if let Some(value) = value {
-        let cache_value = serde_json::from_str::<Value>(value.value())
-            .context("fail to deserialize cache value")?;
+        let cache_value =
+            serde_json::from_str::<Value>(&value).context("fail to deserialize cache value")?;
         CacheStatus::Cached(cache_key, cache_value)
     } else {
         CacheStatus::Missed(cache_key)
@@ -170,11 +133,7 @@ async fn rpc_call(
             }
         };
 
-        let result = read_cache(
-            cache_entry.handler.as_ref(),
-            &cache_entry.cache_store,
-            params,
-        );
+        let result = read_cache(cache_entry.handler.as_ref(), params);
 
         match result {
             Err(err) => {
@@ -260,9 +219,11 @@ async fn rpc_call(
                 .expect("fail to extract cache value");
 
             if can_cache {
-                cache_entry
-                    .cache_store
-                    .insert(cache_key.clone(), extracted_value);
+                let value = extracted_value.as_str();
+                let _ = REDIS
+                    .get_connection()
+                    .unwrap()
+                    .set::<_, _, String>(cache_key.clone(), value);
             }
         }
     }
@@ -311,27 +272,6 @@ async fn main() -> std::io::Result<()> {
         app_state.chains.insert(name.to_string(), chain_state);
     }
 
-    if let Some(datadir) = &arg.datadir {
-        if !std::path::Path::new(datadir).exists() {
-            std::fs::create_dir_all(datadir).expect("fail to create data directory");
-        }
-
-        for (name, chain_state) in app_state.chains.iter_mut() {
-            log::info!("Loading cache table {} from {}", name, datadir);
-
-            let path = std::path::Path::new(&datadir).join(name.to_lowercase());
-            let exists = path.exists();
-            if !exists {
-                continue;
-            }
-
-            match std::fs::File::open(path) {
-                Err(err) => log::error!("fail to open cache file because: {}", err),
-                Ok(file) => chain_state.load(file).expect("fail to load cache table"),
-            };
-        }
-    }
-
     let app_state = web::Data::new(app_state);
 
     log::info!("Server listening on {}:{}", arg.bind, arg.port);
@@ -346,17 +286,6 @@ async fn main() -> std::io::Result<()> {
     }
 
     log::info!("Server stopped");
-
-    if let Some(datadir) = &arg.datadir {
-        for (name, chain_state) in app_state.chains.iter() {
-            log::info!("Persisting cache table {} to {}", name, datadir);
-
-            let path = std::path::Path::new(&datadir).join(name.to_lowercase());
-            let file = std::fs::File::create(path).expect("fail to create file");
-
-            chain_state.dump(file).expect("fail to dump cache table");
-        }
-    }
 
     Ok(())
 }

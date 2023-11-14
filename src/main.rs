@@ -8,6 +8,7 @@ use env_logger::Env;
 use redis::Commands;
 use reqwest::Url;
 use serde_json::{json, Value};
+use std::env;
 
 use crate::cli::Cli;
 use crate::rpc_cache_handler::RpcCacheHandler;
@@ -17,7 +18,11 @@ mod cli;
 mod rpc_cache_handler;
 
 lazy_static! {
-    static ref REDIS: redis::Client = redis::Client::open("redis://localhost/").unwrap();
+    static ref REDIS: redis::Client = {
+        let redis_host = env::var("REDIS_HOST").unwrap_or_else(|_| "localhost".to_string());
+        let redis_url = format!("redis://{}", redis_host);
+        redis::Client::open(redis_url).expect("Failed to create Redis client")
+    };
 }
 
 struct ChainState {

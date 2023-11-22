@@ -20,7 +20,14 @@ mod rpc_cache_handler;
 lazy_static! {
     static ref REDIS: redis::Client = {
         let redis_host = env::var("REDIS_HOST").unwrap_or_else(|_| "localhost".to_string());
-        let redis_url = format!("redis://{}", redis_host);
+        let redis_password = env::var("REDIS_PASSWORD").unwrap_or_else(|_| "".to_string());
+
+        let redis_url = if redis_password.is_empty() {
+            format!("redis://{}", redis_host)
+        } else {
+            format!("redis://:{}@{}", redis_password, redis_host)
+        };
+
         redis::Client::open(redis_url).expect("Failed to create Redis client")
     };
 }

@@ -83,13 +83,17 @@ async fn request_rpc(rpc_url: Url, body: &Value) -> anyhow::Result<Value> {
     Ok(result)
 }
 
-fn read_cache(handler: &dyn RpcCacheHandler, params: &Value) -> anyhow::Result<CacheStatus> {
+fn read_cache(
+    handler: &dyn RpcCacheHandler,
+    method: &str,
+    params: &Value,
+) -> anyhow::Result<CacheStatus> {
     let cache_key = handler
         .extract_cache_key(params)
         .context("fail to extract cache key")?;
 
     let cache_key = match cache_key {
-        Some(cache_key) => cache_key,
+        Some(cache_key) => format!("{}:{}", method, cache_key),
         None => return Ok(CacheStatus::NotAvailable),
     };
 
@@ -145,7 +149,7 @@ async fn rpc_call(
             }
         };
 
-        let result = read_cache(cache_entry.handler.as_ref(), params);
+        let result = read_cache(cache_entry.handler.as_ref(), method, params);
 
         match result {
             Err(err) => {

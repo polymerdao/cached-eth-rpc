@@ -19,17 +19,14 @@ impl RpcCacheHandler for EthGetCode {
         let account = params[0].as_str().context("params[0] not a string")?;
         let block_tag = common::extract_and_format_block_tag(&params[1])?;
 
-        let block_tag = match block_tag {
-            Some(block_tag) => block_tag,
-            None => "dummy".to_string(),
-        };
+        let block_tag = block_tag.unwrap_or_else(|| "dummy".to_string());
 
         Ok(Some(format!("{}-{}", block_tag, account)))
     }
 
     fn extract_cache_value(&self, result: &Value) -> anyhow::Result<(bool, String)> {
         match result.as_str() {
-            Some(str) => Ok((str.len() > 2, serde_json::to_string(result)?)),
+            Some(str) => Ok((str.starts_with("0x"), serde_json::to_string(result)?)),
             _ => Err(anyhow::anyhow!("result not a string")),
         }
     }

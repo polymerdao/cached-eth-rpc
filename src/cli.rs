@@ -17,9 +17,10 @@ pub struct Cli {
     #[arg(
         short,
         long,
-        help = "Path to data directory. If not specified, data persistence is disabled."
+        default_value = "redis://127.0.0.1:6379",
+        help = "Redis URL"
     )]
-    pub datadir: Option<String>,
+    pub redis_url: String,
 }
 
 fn endpoint_parser(s: &str) -> Result<(String, Url), String> {

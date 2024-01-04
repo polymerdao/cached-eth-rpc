@@ -8,29 +8,12 @@ use env_logger::Env;
 use redis::Commands;
 use reqwest::Url;
 use serde_json::{json, Value};
-use std::env;
 
 use crate::cli::Cli;
 use crate::rpc_cache_handler::RpcCacheHandler;
-use lazy_static::lazy_static;
 
 mod cli;
 mod rpc_cache_handler;
-
-lazy_static! {
-    static ref REDIS: redis::Client = {
-        let redis_host = env::var("REDIS_HOST").unwrap_or_else(|_| "localhost".to_string());
-        let redis_password = env::var("REDIS_PASSWORD").unwrap_or_else(|_| "".to_string());
-
-        let redis_url = if redis_password.is_empty() {
-            format!("redis://{}", redis_host)
-        } else {
-            format!("redis://:{}@{}", redis_password, redis_host)
-        };
-
-        redis::Client::open(redis_url).expect("Failed to create Redis client")
-    };
-}
 
 struct ChainState {
     rpc_url: Url,
@@ -58,10 +41,10 @@ impl CacheEntry {
     }
 }
 
-#[derive(Default)]
 struct AppState {
     chains: HashMap<String, ChainState>,
     http_client: reqwest::Client,
+    redis: r2d2::Pool<redis::Client>,
 }
 
 enum CacheStatus {
@@ -83,6 +66,7 @@ async fn request_rpc(client: &reqwest::Client, rpc_url: Url, body: &Value) -> an
 }
 
 fn read_cache(
+    redis_con: &mut r2d2::PooledConnection<redis::Client>,
     handler: &dyn RpcCacheHandler,
     method: &str,
     params: &Value,
@@ -96,7 +80,7 @@ fn read_cache(
         None => return Ok(CacheStatus::NotAvailable),
     };
 
-    let value: Option<String> = REDIS.get_connection().unwrap().get(&cache_key).unwrap();
+    let value: Option<String> = redis_con.get(&cache_key).unwrap();
 
     Ok(if let Some(value) = value {
         let cache_value =
@@ -109,11 +93,11 @@ fn read_cache(
 
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
-    path: web::Path<(String,)>,
+    path: web::Path<(String, )>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let (chain,) = path.into_inner();
+    let (chain, ) = path.into_inner();
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -128,6 +112,11 @@ async fn rpc_call(
     let mut request_result = HashMap::new();
     let mut uncached_requests = HashMap::new();
     let mut ordered_id = vec![];
+
+    let mut redis_con = data.redis.get().map_err(|err| {
+        log::error!("fail to get redis connection because: {}", err);
+        Err(error::ErrorInternalServerError("fail to get redis connection"))
+    })?;
 
     for request in &requests {
         let id = request["id"]
@@ -148,7 +137,7 @@ async fn rpc_call(
             }
         };
 
-        let result = read_cache(cache_entry.handler.as_ref(), method, params);
+        let result = read_cache(&mut redis_con, cache_entry.handler.as_ref(), method, params);
 
         match result {
             Err(err) => {
@@ -235,9 +224,7 @@ async fn rpc_call(
 
             if can_cache {
                 let value = extracted_value.as_str();
-                let _ = REDIS
-                    .get_connection()
-                    .unwrap()
+                let _ = redis_con
                     .set::<_, _, String>(cache_key.clone(), value);
             }
         }
@@ -267,7 +254,15 @@ async fn main() -> std::io::Result<()> {
 
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
-    let mut app_state = AppState::default();
+    let redis_client = redis::Client::open(arg.redis_url).expect("Failed to create Redis client");
+    let redis_con_pool = r2d2::Pool::new(redis_client).expect("Failed to create Redis connection pool");
+
+    let mut app_state = AppState {
+        chains: Default::default(),
+        http_client: reqwest::Client::new(),
+        redis: redis_con_pool,
+    };
+
     let handler_factories = rpc_cache_handler::all_factories();
 
     log::info!("Provisioning cache tables");

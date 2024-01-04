@@ -61,6 +61,7 @@ impl CacheEntry {
 #[derive(Default)]
 struct AppState {
     chains: HashMap<String, ChainState>,
+    http_client: reqwest::Client,
 }
 
 enum CacheStatus {
@@ -69,9 +70,7 @@ enum CacheStatus {
     Missed(String),
 }
 
-async fn request_rpc(rpc_url: Url, body: &Value) -> anyhow::Result<Value> {
-    let client = reqwest::Client::new();
-
+async fn request_rpc(client: &reqwest::Client, rpc_url: Url, body: &Value) -> anyhow::Result<Value> {
     let result = client
         .post(rpc_url)
         .json(body)
@@ -186,7 +185,7 @@ async fn rpc_call(
                 .collect::<Vec<Value>>(),
         );
 
-        let rpc_result = request_rpc(chain_state.rpc_url.clone(), &request_body)
+        let rpc_result = request_rpc(&data.http_client, chain_state.rpc_url.clone(), &request_body)
             .await
             .map_err(|err| {
                 log::error!("fail to make rpc request because: {}", err);

@@ -53,7 +53,11 @@ enum CacheStatus {
     Missed(String),
 }
 
-async fn request_rpc(client: &reqwest::Client, rpc_url: Url, body: &Value) -> anyhow::Result<Value> {
+async fn request_rpc(
+    client: &reqwest::Client,
+    rpc_url: Url,
+    body: &Value,
+) -> anyhow::Result<Value> {
     let result = client
         .post(rpc_url)
         .json(body)
@@ -93,11 +97,11 @@ fn read_cache(
 
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
-    path: web::Path<(String, )>,
+    path: web::Path<(String,)>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let (chain, ) = path.into_inner();
+    let (chain,) = path.into_inner();
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -115,7 +119,7 @@ async fn rpc_call(
 
     let mut redis_con = data.redis.get().map_err(|err| {
         log::error!("fail to get redis connection because: {}", err);
-        Err(error::ErrorInternalServerError("fail to get redis connection"))
+        error::ErrorInternalServerError("fail to get redis connection")
     })?;
 
     for request in &requests {
@@ -174,15 +178,16 @@ async fn rpc_call(
                 .collect::<Vec<Value>>(),
         );
 
-        let rpc_result = request_rpc(&data.http_client, chain_state.rpc_url.clone(), &request_body)
-            .await
-            .map_err(|err| {
-                log::error!("fail to make rpc request because: {}", err);
-                error::ErrorInternalServerError(format!(
-                    "fail to make rpc request because: {}",
-                    err
-                ))
-            })?;
+        let rpc_result = request_rpc(
+            &data.http_client,
+            chain_state.rpc_url.clone(),
+            &request_body,
+        )
+        .await
+        .map_err(|err| {
+            log::error!("fail to make rpc request because: {}", err);
+            error::ErrorInternalServerError(format!("fail to make rpc request because: {}", err))
+        })?;
 
         let rpc_result = rpc_result.as_array().ok_or_else(|| {
             log::error!("invalid rpc response: {}", rpc_result.to_string());
@@ -224,8 +229,7 @@ async fn rpc_call(
 
             if can_cache {
                 let value = extracted_value.as_str();
-                let _ = redis_con
-                    .set::<_, _, String>(cache_key.clone(), value);
+                let _ = redis_con.set::<_, _, String>(cache_key.clone(), value);
             }
         }
     }
@@ -255,7 +259,8 @@ async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let redis_client = redis::Client::open(arg.redis_url).expect("Failed to create Redis client");
-    let redis_con_pool = r2d2::Pool::new(redis_client).expect("Failed to create Redis connection pool");
+    let redis_con_pool =
+        r2d2::Pool::new(redis_client).expect("Failed to create Redis connection pool");
 
     let mut app_state = AppState {
         chains: Default::default(),

@@ -3,17 +3,10 @@ A simple http server to cache specific eth rpc requests in memory. Useful for ma
 Multiple endpoints/chains can be configured to be cached.
 
 ### Usage (with docker)
-```shell
-docker run \
-  -d \
-  -p 8124:8124 \
-  -v ./data/:/data/ \
-  -e DATA_PERSISTENCE=1 \
-  -e ENDPOINTS="eth-chain=https://rpc.ankr.com/eth,bsc-chain=https://rpc.ankr.com/bsc" \
-  --name cached-eth-rpc \
-  ghcr.io/tonyke-bot/cached-eth-rpc
-```
 
+1. Edit `docker-compose.yml`
+
+2. `docker-compose up`
 ### Usage
 With
 ```shell

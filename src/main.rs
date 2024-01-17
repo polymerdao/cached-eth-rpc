@@ -53,6 +53,11 @@ enum CacheStatus {
     Missed(String),
 }
 
+enum ResultOrError {
+    Error(Value),
+    Result(Value),
+}
+
 async fn request_rpc(
     client: &reqwest::Client,
     rpc_url: Url,
@@ -154,7 +159,7 @@ async fn rpc_call(
             }
             Ok(CacheStatus::Cached(cache_key, value)) => {
                 log::info!("cache hit for method {} with key {}", method, cache_key);
-                request_result.insert(id, value);
+                request_result.insert(id, ResultOrError::Result(value));
             }
             Ok(CacheStatus::Missed(cache_key)) => {
                 log::info!("cache missed for method {} with key {}", method, cache_key);
@@ -198,22 +203,16 @@ async fn rpc_call(
             let id = response["id"]
                 .as_u64()
                 .ok_or_else(|| error::ErrorBadRequest("id not found"))?;
-            let (method, params, cache_key) = uncached_requests.get(&id).unwrap();
+            let (method, _params, cache_key) = uncached_requests.get(&id).unwrap();
 
             let error = &response["error"];
             if !error.is_null() {
-                log::error!(
-                    "rpc error: {}, request: {}({}), response: {}",
-                    error.to_string(),
-                    method,
-                    params.to_string(),
-                    response.to_string()
-                );
-                return Err(error::ErrorInternalServerError("remote rpc error"));
+                request_result.insert(id, ResultOrError::Error(error.clone()));
+                continue;
             }
 
             let result = &response["result"];
-            request_result.insert(id, result.clone());
+            request_result.insert(id, ResultOrError::Result(result.clone()));
 
             let cache_key = match cache_key {
                 Some(cache_key) => cache_key.clone(),
@@ -241,7 +240,14 @@ async fn rpc_call(
                 .get(id)
                 .unwrap_or_else(|| panic!("result for id {} not found", id));
 
-            json!({ "jsonrpc": "2.0", "id": id, "result": result })
+            match result {
+                ResultOrError::Error(error) => {
+                    json!({ "jsonrpc": "2.0", "id": id, "error": error })
+                }
+                ResultOrError::Result(result) => {
+                    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+                }
+            }
         })
         .collect::<Vec<Value>>();
 

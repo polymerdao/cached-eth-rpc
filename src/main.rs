@@ -100,14 +100,13 @@ fn read_cache(
     })
 }
 
-
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
-    path: web::Path<(String, )>,
+    path: web::Path<(String,)>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let (chain, ) = path.into_inner();
+    let (chain,) = path.into_inner();
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -124,7 +123,7 @@ async fn rpc_call(
     let mut ids_in_original_order = vec![];
 
     let mut redis_con = data.redis.get().map_err(|err| {
-        log::error!("fail to get redis connection because: {}", err);
+        tracing::error!("fail to get redis connection because: {}", err);
         error::ErrorInternalServerError("fail to get redis connection")
     })?;
 
@@ -151,23 +150,28 @@ async fn rpc_call(
             }
         };
 
-        let result = read_cache(&mut redis_con, cache_entry.handler.as_ref(), &method, &params);
+        let result = read_cache(
+            &mut redis_con,
+            cache_entry.handler.as_ref(),
+            &method,
+            &params,
+        );
 
         match result {
             Err(err) => {
-                log::error!("fail to read cache because: {}", err);
+                tracing::error!("fail to read cache because: {}", err);
                 uncached_requests.insert(id, (method, params, None));
             }
             Ok(CacheStatus::NotAvailable) => {
-                log::info!("cache not available for method {}", method);
+                tracing::info!("cache not available for method {}", method);
                 uncached_requests.insert(id, (method, params, None));
             }
             Ok(CacheStatus::Cached(cache_key, value)) => {
-                log::info!("cache hit for method {} with key {}", method, cache_key);
+                tracing::info!("cache hit for method {} with key {}", method, cache_key);
                 request_result.insert(id, ResultOrError::Result(value));
             }
             Ok(CacheStatus::Missed(cache_key)) => {
-                log::info!("cache missed for method {} with key {}", method, cache_key);
+                tracing::info!("cache missed for method {} with key {}", method, cache_key);
                 uncached_requests.insert(id, (method, params, Some(cache_key)));
             }
         }
@@ -193,16 +197,19 @@ async fn rpc_call(
             chain_state.rpc_url.clone(),
             &request_body,
         )
-            .await
-            .map_err(|err| {
-                log::error!("fail to make rpc request because: {}", err);
-                error::ErrorInternalServerError(format!("fail to make rpc request because: {}", err))
-            })?;
+        .await
+        .map_err(|err| {
+            tracing::error!("fail to make rpc request because: {}", err);
+            error::ErrorInternalServerError(format!("fail to make rpc request because: {}", err))
+        })?;
 
         let result_values = match rpc_result {
             Value::Array(v) => v,
             _ => {
-                log::error!("array is expected but we got invalid rpc response: {},", rpc_result.to_string());
+                tracing::error!(
+                    "array is expected but we got invalid rpc response: {},",
+                    rpc_result.to_string()
+                );
                 return Err(error::ErrorInternalServerError("invalid rpc response"));
             }
         };
@@ -284,10 +291,10 @@ async fn main() -> std::io::Result<()> {
 
     let handler_factories = rpc_cache_handler::all_factories();
 
-    log::info!("Provisioning cache tables");
+    tracing::info!("Provisioning cache tables");
 
     for (name, rpc_url) in arg.endpoints.iter() {
-        log::info!("Adding endpoint {} linked to {}", name, rpc_url);
+        tracing::info!("Adding endpoint {} linked to {}", name, rpc_url);
 
         let mut chain_state = ChainState::new(rpc_url.clone());
 
@@ -303,7 +310,7 @@ async fn main() -> std::io::Result<()> {
 
     let app_state = web::Data::new(app_state);
 
-    log::info!("Server listening on {}:{}", arg.bind, arg.port);
+    tracing::info!("Server listening on {}:{}", arg.bind, arg.port);
 
     {
         let app_state = app_state.clone();
@@ -314,7 +321,7 @@ async fn main() -> std::io::Result<()> {
             .await?;
     }
 
-    log::info!("Server stopped");
+    tracing::info!("Server stopped");
 
     Ok(())
 }

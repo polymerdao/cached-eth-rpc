@@ -257,6 +257,7 @@ async fn rpc_call(
 
             match result {
                 ResultOrError::Error(error) => {
+                    tracing::error!("{:?}", error.to_string());
                     json!({ "jsonrpc": "2.0", "id": id, "error": error.take() })
                 }
                 ResultOrError::Result(result) => {

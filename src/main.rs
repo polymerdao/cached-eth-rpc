@@ -102,11 +102,11 @@ fn read_cache(
 
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
-    path: web::Path<(String,)>,
+    path: web::Path<(String, )>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let (chain,) = path.into_inner();
+    let (chain, ) = path.into_inner();
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -122,10 +122,7 @@ async fn rpc_call(
     let mut uncached_requests = HashMap::new();
     let mut ids_in_original_order = vec![];
 
-    let mut redis_con = data.redis.get().map_err(|err| {
-        tracing::error!("fail to get redis connection because: {}", err);
-        error::ErrorInternalServerError("fail to get redis connection")
-    })?;
+
 
     for mut request in requests {
         let id = match request["id"].take() {
@@ -149,6 +146,11 @@ async fn rpc_call(
                 continue;
             }
         };
+
+        let mut redis_con = data.redis.get().map_err(|err| {
+            tracing::error!("fail to get redis connection because: {}", err);
+            error::ErrorInternalServerError("fail to get redis connection")
+        })?;
 
         let result = read_cache(
             &mut redis_con,
@@ -197,11 +199,11 @@ async fn rpc_call(
             chain_state.rpc_url.clone(),
             &request_body,
         )
-        .await
-        .map_err(|err| {
-            tracing::error!("fail to make rpc request because: {}", err);
-            error::ErrorInternalServerError(format!("fail to make rpc request because: {}", err))
-        })?;
+            .await
+            .map_err(|err| {
+                tracing::error!("fail to make rpc request because: {}", err);
+                error::ErrorInternalServerError(format!("fail to make rpc request because: {}", err))
+            })?;
 
         let result_values = match rpc_result {
             Value::Array(v) => v,
@@ -213,6 +215,11 @@ async fn rpc_call(
                 return Err(error::ErrorInternalServerError("invalid rpc response"));
             }
         };
+
+        let mut redis_con = data.redis.get().map_err(|err| {
+            tracing::error!("fail to get redis connection because: {}", err);
+            error::ErrorInternalServerError("fail to get redis connection")
+        })?;
 
         for mut response in result_values {
             let id = response["id"]
@@ -281,8 +288,9 @@ async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let redis_client = redis::Client::open(arg.redis_url).expect("Failed to create Redis client");
-    let redis_con_pool =
-        r2d2::Pool::new(redis_client).expect("Failed to create Redis connection pool");
+    let redis_con_pool = r2d2::Pool::builder()
+            .max_size(10)
+            .build(redis_client).expect("Failed to create Redis connection pool");
 
     let mut app_state = AppState {
         chains: Default::default(),

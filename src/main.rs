@@ -289,7 +289,7 @@ async fn main() -> std::io::Result<()> {
 
     let redis_client = redis::Client::open(arg.redis_url).expect("Failed to create Redis client");
     let redis_con_pool = r2d2::Pool::builder()
-            .max_size(10)
+            .max_size(300)
             .build(redis_client).expect("Failed to create Redis connection pool");
 
     let mut app_state = AppState {

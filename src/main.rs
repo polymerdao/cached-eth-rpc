@@ -14,16 +14,19 @@ use crate::rpc_cache_handler::RpcCacheHandler;
 
 mod cli;
 mod rpc_cache_handler;
+mod utils;
 
 struct ChainState {
     rpc_url: Url,
+    id: u64,
     cache_entries: HashMap<String, CacheEntry>,
 }
 
 impl ChainState {
-    fn new(rpc_url: Url) -> Self {
+    fn new(rpc_url: Url, chain_id: u64) -> Self {
         Self {
             rpc_url,
+            id: chain_id,
             cache_entries: Default::default(),
         }
     }
@@ -76,6 +79,7 @@ async fn request_rpc(
 
 fn read_cache(
     redis_con: &mut r2d2::PooledConnection<redis::Client>,
+    chain_id: u64,
     handler: &dyn RpcCacheHandler,
     method: &str,
     params: &Value,
@@ -85,7 +89,7 @@ fn read_cache(
         .context("fail to extract cache key")?;
 
     let cache_key = match cache_key {
-        Some(cache_key) => format!("{}:{}", method, cache_key),
+        Some(cache_key) => format!("{chain_id}:{method}:{cache_key}"),
         None => return Ok(CacheStatus::NotAvailable),
     };
 
@@ -102,11 +106,11 @@ fn read_cache(
 
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
-    path: web::Path<(String, )>,
+    path: web::Path<(String,)>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let (chain, ) = path.into_inner();
+    let (chain,) = path.into_inner();
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -121,8 +125,6 @@ async fn rpc_call(
     let mut request_result = HashMap::new();
     let mut uncached_requests = HashMap::new();
     let mut ids_in_original_order = vec![];
-
-
 
     for mut request in requests {
         let id = match request["id"].take() {
@@ -154,6 +156,7 @@ async fn rpc_call(
 
         let result = read_cache(
             &mut redis_con,
+            chain_state.id,
             cache_entry.handler.as_ref(),
             &method,
             &params,
@@ -199,11 +202,11 @@ async fn rpc_call(
             chain_state.rpc_url.clone(),
             &request_body,
         )
-            .await
-            .map_err(|err| {
-                tracing::error!("fail to make rpc request because: {}", err);
-                error::ErrorInternalServerError(format!("fail to make rpc request because: {}", err))
-            })?;
+        .await
+        .map_err(|err| {
+            tracing::error!("fail to make rpc request because: {}", err);
+            error::ErrorInternalServerError(format!("fail to make rpc request because: {}", err))
+        })?;
 
         let result_values = match rpc_result {
             Value::Array(v) => v,
@@ -289,8 +292,9 @@ async fn main() -> std::io::Result<()> {
 
     let redis_client = redis::Client::open(arg.redis_url).expect("Failed to create Redis client");
     let redis_con_pool = r2d2::Pool::builder()
-            .max_size(300)
-            .build(redis_client).expect("Failed to create Redis connection pool");
+        .max_size(300)
+        .build(redis_client)
+        .expect("Failed to create Redis connection pool");
 
     let mut app_state = AppState {
         chains: Default::default(),
@@ -305,7 +309,11 @@ async fn main() -> std::io::Result<()> {
     for (name, rpc_url) in arg.endpoints.iter() {
         tracing::info!("Adding endpoint {} linked to {}", name, rpc_url);
 
-        let mut chain_state = ChainState::new(rpc_url.clone());
+        let chain_id = utils::get_chain_id(rpc_url.as_str())
+            .await
+            .expect("fail to get chain id");
+
+        let mut chain_state = ChainState::new(rpc_url.clone(), chain_id);
 
         for factory in &handler_factories {
             let handler = factory();

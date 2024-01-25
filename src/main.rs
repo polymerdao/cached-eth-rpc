@@ -357,6 +357,7 @@ fn new_cache_backend_factory(
 
             let conn_pool = r2d2::Pool::builder()
                 .max_size(300)
+                .test_on_check_out(false)
                 .build(client)
                 .context("fail to create redis connection pool")?;
             let factory = RedisBackendFactory::new(chain_id, conn_pool);

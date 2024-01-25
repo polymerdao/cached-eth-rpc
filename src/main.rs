@@ -1,49 +1,23 @@
 use std::collections::HashMap;
 
 use actix_web::{error, web, App, Error, HttpResponse, HttpServer};
-use anyhow::Context;
+use cache::CacheBackendFactory;
 use clap::Parser;
-use dashmap::DashMap;
 use env_logger::Env;
-use redis::Commands;
 use reqwest::Url;
 use serde_json::{json, Value};
 
+use crate::cache::redis_backend::RedisBackendFactory;
+use crate::cache::CacheStatus;
 use crate::cli::Cli;
 use crate::json_rpc::{DefinedError, JsonRpcResponse, RequestId};
 use crate::rpc_cache_handler::RpcCacheHandler;
 
+mod cache;
 mod cli;
 mod json_rpc;
 mod rpc_cache_handler;
 mod utils;
-
-fn read_cache(
-    redis_con: &mut r2d2::PooledConnection<redis::Client>,
-    chain_id: u64,
-    handler: &dyn RpcCacheHandler,
-    method: &str,
-    params: &Value,
-) -> anyhow::Result<CacheStatus> {
-    let cache_key = handler
-        .extract_cache_key(params)
-        .context("fail to extract cache key")?;
-
-    let cache_key = match cache_key {
-        Some(cache_key) => format!("{chain_id}:{method}:{cache_key}"),
-        None => return Ok(CacheStatus::NotAvailable),
-    };
-
-    let value: Option<String> = redis_con.get(&cache_key).unwrap();
-
-    Ok(if let Some(value) = value {
-        let cache_value =
-            serde_json::from_str::<Value>(&value).context("fail to deserialize cache value")?;
-        CacheStatus::Cached(cache_key, cache_value)
-    } else {
-        CacheStatus::Missed(cache_key)
-    })
-}
 
 fn extract_single_request_info(
     mut raw_request: Value,
@@ -83,10 +57,20 @@ async fn rpc_call(
 
     // Scope the redis connection
     {
-        let mut redis_con = data.redis.get().map_err(|err| {
-            tracing::error!("fail to get redis connection because: {}", err);
-            error::ErrorInternalServerError("fail to get redis connection")
-        })?;
+        let mut cache_backend = match chain_state.cache_factory.get_instance() {
+            Ok(v) => v,
+            Err(err) => {
+                tracing::error!("fail to get cache backend because: {}", err);
+                return JsonRpcResponse::from_error(
+                    None,
+                    DefinedError::InternalError(Some(json!({
+                        "error": "fail to get cache backend",
+                        "reason": err.to_string(),
+                    }))),
+                )
+                .into();
+            }
+        };
 
         for (index, request) in requests.into_iter().enumerate() {
             let (id, method, params) = match extract_single_request_info(request) {
@@ -98,51 +82,50 @@ async fn rpc_call(
                 }
             };
 
-            let rpc_request = match chain_state.cache_entries.get(&method) {
-                Some(cache_entry) => {
-                    let result = read_cache(
-                        &mut redis_con,
-                        chain_state.id,
-                        cache_entry.handler.as_ref(),
-                        &method,
-                        &params,
-                    );
+            macro_rules! push_uncached_request_and_continue {
+                () => {{
+                    let rpc_request = RpcRequest::new_uncachable(index, id, method, params);
+                    request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
+                    uncached_requests.push(rpc_request);
+                    continue;
+                }};
 
-                    match result {
-                        Ok(CacheStatus::NotAvailable) => {
-                            tracing::info!("cache not available for method {}", method);
-                            RpcRequest::new_uncachable(index, id, method, params)
-                        }
-                        Ok(CacheStatus::Cached(cache_key, value)) => {
-                            tracing::info!(
-                                "cache hit for method {} with key {}",
-                                method,
-                                cache_key
-                            );
+                ($key: expr) => {{
+                    let rpc_request = RpcRequest::new(index, id, method, params, $key);
+                    request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
+                    uncached_requests.push(rpc_request);
+                    continue;
+                }};
+            }
 
-                            let response = JsonRpcResponse::from_result(id, value);
-                            ordered_requests_result[index] = Some(response);
-                            continue;
-                        }
-                        Ok(CacheStatus::Missed(cache_key)) => {
-                            tracing::info!(
-                                "cache missed for method {} with key {}",
-                                method,
-                                cache_key
-                            );
-                            RpcRequest::new(index, id, method, params, cache_key)
-                        }
-                        Err(err) => {
-                            tracing::error!("fail to read cache because: {}", err);
-                            RpcRequest::new_uncachable(index, id, method, params)
-                        }
-                    }
-                }
-                None => RpcRequest::new_uncachable(index, id, method, params),
+            let cache_entry = match chain_state.cache_entries.get(&method) {
+                Some(cache_entry) => cache_entry,
+                None => push_uncached_request_and_continue!(),
             };
 
-            request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
-            uncached_requests.push(rpc_request);
+            let params_key = match cache_entry.handler.extract_cache_key(&params) {
+                Ok(Some(params_key)) => params_key,
+                Ok(None) => push_uncached_request_and_continue!(),
+                Err(err) => {
+                    tracing::error!("fail to extract cache key because: {}", err);
+                    push_uncached_request_and_continue!();
+                }
+            };
+
+            match cache_backend.read(&method, &params_key) {
+                Ok(CacheStatus::Cached { key, value }) => {
+                    tracing::info!("cache hit for method {} with key {}", method, key);
+                    ordered_requests_result[index] = Some(JsonRpcResponse::from_result(id, value));
+                }
+                Ok(CacheStatus::Missed { key }) => {
+                    tracing::info!("cache missed for method {} with key {}", method, key);
+                    push_uncached_request_and_continue!(key);
+                }
+                Err(err) => {
+                    tracing::error!("fail to read cache because: {}", err);
+                    push_uncached_request_and_continue!();
+                }
+            }
         }
     }
 
@@ -229,16 +212,16 @@ async fn rpc_call(
         );
     }
 
-    let mut redis_con = match data.redis.get() {
+    let mut cache_backend = match chain_state.cache_factory.get_instance() {
         Ok(v) => v,
         Err(err) => {
-            tracing::error!("fail to get redis connection because: {}", err);
+            tracing::error!("fail to get cache backend because: {}", err);
 
             for rpc_request in uncached_requests {
                 ordered_requests_result[rpc_request.index] = Some(JsonRpcResponse::from_error(
                     Some(rpc_request.id),
                     DefinedError::InternalError(Some(json!({
-                        "error": "fail to get redis connection",
+                        "error": "fail to get cache backend",
                         "reason": err.to_string(),
                     }))),
                 ));
@@ -305,8 +288,7 @@ async fn rpc_call(
         };
 
         if can_cache {
-            let value = extracted_value.as_str();
-            let _ = redis_con.set::<_, _, String>(cache_key.clone(), value);
+            let _ = cache_backend.write(&cache_key, &extracted_value.to_string());
         }
     }
 
@@ -328,7 +310,6 @@ async fn main() -> std::io::Result<()> {
     let mut app_state = AppState {
         chains: Default::default(),
         http_client: reqwest::Client::new(),
-        redis: redis_con_pool,
     };
 
     let handler_factories = rpc_cache_handler::all_factories();
@@ -342,7 +323,10 @@ async fn main() -> std::io::Result<()> {
             .await
             .expect("fail to get chain id");
 
-        let mut chain_state = ChainState::new(rpc_url.clone(), chain_id);
+        let redis_backend_factory =
+            Box::new(RedisBackendFactory::new(chain_id, redis_con_pool.clone()));
+
+        let mut chain_state = ChainState::new(rpc_url.clone(), redis_backend_factory);
 
         for factory in &handler_factories {
             let handler = factory();
@@ -374,21 +358,19 @@ async fn main() -> std::io::Result<()> {
 
 struct ChainState {
     rpc_url: Url,
-    id: u64,
+    cache_factory: Box<dyn CacheBackendFactory>,
     cache_entries: HashMap<String, CacheEntry>,
 }
 
 impl ChainState {
-    fn new(rpc_url: Url, chain_id: u64) -> Self {
+    fn new(rpc_url: Url, cache_factory: Box<dyn CacheBackendFactory>) -> Self {
         Self {
             rpc_url,
-            id: chain_id,
+            cache_factory,
             cache_entries: Default::default(),
         }
     }
 }
-
-pub type ChainStorePersistedCache = HashMap<String, DashMap<String, String>>;
 
 struct CacheEntry {
     handler: Box<dyn RpcCacheHandler>,
@@ -403,13 +385,6 @@ impl CacheEntry {
 struct AppState {
     chains: HashMap<String, ChainState>,
     http_client: reqwest::Client,
-    redis: r2d2::Pool<redis::Client>,
-}
-
-enum CacheStatus {
-    NotAvailable,
-    Cached(String, Value),
-    Missed(String),
 }
 
 #[derive(Debug)]

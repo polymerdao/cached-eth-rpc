@@ -5,6 +5,7 @@ pub use eth_call::EthCall;
 pub use eth_chainid::EthChainId;
 pub use eth_get_balance::EthGetBalance;
 pub use eth_get_block_by_number::EthGetBlockByNumber;
+pub use eth_get_block_receipts::EthGetBlockReceipts;
 pub use eth_get_code::EthGetCode;
 pub use eth_get_storage_at::EthGetStorageAt;
 pub use eth_get_transaction_by_block_hash_and_index::EthGetTransactionByBlockHashAndIndex;
@@ -18,6 +19,7 @@ mod eth_call;
 mod eth_chainid;
 mod eth_get_balance;
 mod eth_get_block_by_number;
+mod eth_get_block_receipts;
 mod eth_get_code;
 mod eth_get_storage_at;
 mod eth_get_transaction_by_block_hash_and_index;
@@ -44,6 +46,7 @@ pub fn all_factories() -> Vec<RpcCacheHandlerFactory> {
         || Box::new(EthChainId) as Box<dyn RpcCacheHandler>,
         || Box::new(EthGetBalance) as Box<dyn RpcCacheHandler>,
         || Box::new(EthGetBlockByNumber) as Box<dyn RpcCacheHandler>,
+        || Box::new(EthGetBlockReceipts) as Box<dyn RpcCacheHandler>,
         || Box::new(EthGetCode) as Box<dyn RpcCacheHandler>,
         || Box::new(EthGetStorageAt) as Box<dyn RpcCacheHandler>,
         || Box::new(EthGetTransactionByBlockHashAndIndex) as Box<dyn RpcCacheHandler>,

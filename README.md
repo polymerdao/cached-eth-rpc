@@ -26,6 +26,7 @@ Mainly supported requests with determined block number. Other methods will be di
 - `eth_chainId`
 - `eth_getBalance`
 - `eth_getBlockByNumber`
+- `eth_getBlockReceipts`
 - `eth_getCode`
 - `eth_getStorageAt`
 - `eth_getTransactionByHash`

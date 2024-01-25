@@ -1,4 +1,5 @@
 use reqwest::Url;
+use serde::Serialize;
 use serde_json::{json, Value};
 
 pub async fn get_chain_id(client: &reqwest::Client, rpc_url: &str) -> anyhow::Result<u64> {
@@ -18,10 +19,10 @@ pub async fn get_chain_id(client: &reqwest::Client, rpc_url: &str) -> anyhow::Re
     }
 }
 
-pub async fn do_rpc_request(
+pub async fn do_rpc_request<T: Serialize + ?Sized>(
     client: &reqwest::Client,
     rpc_url: Url,
-    body: &Value,
+    body: &T,
 ) -> anyhow::Result<Value> {
     let result = client
         .post(rpc_url)

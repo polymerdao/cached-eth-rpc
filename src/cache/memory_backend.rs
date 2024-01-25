@@ -11,7 +11,7 @@ pub struct MemoryBackendFactory {
 }
 
 impl MemoryBackendFactory {
-    pub fn new(_: u64) -> Self {
+    pub fn new() -> Self {
         Self {
             data: Arc::new(DashMap::new()),
         }

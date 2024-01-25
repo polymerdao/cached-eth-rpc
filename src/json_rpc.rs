@@ -47,6 +47,25 @@ enum StringOrNumber {
     Number(u64),
 }
 
+#[derive(Serialize, Clone)]
+pub struct JsonRpcRequest {
+    pub jsonrpc: String,
+    pub method: String,
+    pub params: Value,
+    pub id: Option<RequestId>,
+}
+
+impl JsonRpcRequest {
+    pub fn new(id: Option<RequestId>, method: String, params: Value) -> Self {
+        Self {
+            jsonrpc: DEFAULT_JSON_RPC_VERSION.to_string(),
+            method,
+            params,
+            id,
+        }
+    }
+}
+
 // Assume A is some type you've defined
 #[derive(Serialize, Clone)]
 pub struct JsonRpcResponse {

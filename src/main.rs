@@ -1,37 +1,25 @@
 use std::collections::HashMap;
 
 use actix_web::{error, web, App, Error, HttpResponse, HttpServer};
-use cache::CacheBackendFactory;
+use anyhow::Context;
+use cache::{memory_backend, CacheBackendFactory};
 use clap::Parser;
 use env_logger::Env;
 use reqwest::Url;
+use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::args::Args;
 use crate::cache::redis_backend::RedisBackendFactory;
 use crate::cache::CacheStatus;
-use crate::cli::Cli;
-use crate::json_rpc::{DefinedError, JsonRpcResponse, RequestId};
+use crate::json_rpc::{DefinedError, JsonRpcRequest, JsonRpcResponse, RequestId};
 use crate::rpc_cache_handler::RpcCacheHandler;
 
+mod args;
 mod cache;
-mod cli;
 mod json_rpc;
 mod rpc_cache_handler;
 mod utils;
-
-fn extract_single_request_info(
-    mut raw_request: Value,
-) -> Result<(RequestId, String, Value), (Option<RequestId>, DefinedError)> {
-    let id = RequestId::try_from(raw_request["id"].take())
-        .map_err(|_| (None, DefinedError::InvalidRequest))?;
-    let method = match raw_request["method"].take() {
-        Value::String(s) => s,
-        _ => return Err((Some(id), DefinedError::MethodNotFound)),
-    };
-    let params = raw_request["params"].take();
-
-    Ok((id, method, params))
-}
 
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
@@ -142,24 +130,10 @@ async fn rpc_call(
         return_response!();
     }
 
-    let request_body = Value::Array(
-        uncached_requests
-            .iter()
-            .map(|rpc_request| {
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": rpc_request.id.clone(),
-                    "method": rpc_request.method,
-                    "params": rpc_request.params.clone(),
-                })
-            })
-            .collect::<Vec<Value>>(),
-    );
-
     let rpc_result = utils::do_rpc_request(
         &data.http_client,
         chain_state.rpc_url.clone(),
-        &request_body,
+        &uncached_requests,
     );
 
     let rpc_result = match rpc_result.await {
@@ -268,6 +242,8 @@ async fn rpc_call(
             None => continue,
         };
 
+        // It's safe to unwrap here because if the cache system doesn't support this method, we have already
+        // made the early return.
         let cache_entry = chain_state.cache_entries.get(&rpc_request.method).unwrap();
 
         let (can_cache, extracted_value) = match cache_entry.handler.extract_cache_value(&result) {
@@ -295,17 +271,27 @@ async fn rpc_call(
     return_response!()
 }
 
+fn extract_single_request_info(
+    mut raw_request: Value,
+) -> Result<(RequestId, String, Value), (Option<RequestId>, DefinedError)> {
+    let id = RequestId::try_from(raw_request["id"].take())
+        .map_err(|_| (None, DefinedError::InvalidRequest))?;
+
+    let method = match raw_request["method"].take() {
+        Value::String(s) => s,
+        _ => return Err((Some(id), DefinedError::MethodNotFound)),
+    };
+
+    let params = raw_request["params"].take();
+
+    Ok((id, method, params))
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let arg = Cli::parse();
-
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
-    let redis_client = redis::Client::open(arg.redis_url).expect("Failed to create Redis client");
-    let redis_con_pool = r2d2::Pool::builder()
-        .max_size(300)
-        .build(redis_client)
-        .expect("Failed to create Redis connection pool");
+    let args = Args::parse();
 
     let mut app_state = AppState {
         chains: Default::default(),
@@ -314,25 +300,27 @@ async fn main() -> std::io::Result<()> {
 
     let handler_factories = rpc_cache_handler::all_factories();
 
-    tracing::info!("Provisioning cache tables");
-
-    for (name, rpc_url) in arg.endpoints.iter() {
-        tracing::info!("Adding endpoint {} linked to {}", name, rpc_url);
+    for (name, rpc_url) in args.endpoints.iter() {
+        tracing::info!("Linked `{name}` to endpoint {rpc_url}");
 
         let chain_id = utils::get_chain_id(&reqwest::Client::new(), rpc_url.as_str())
             .await
             .expect("fail to get chain id");
 
-        let redis_backend_factory =
-            Box::new(RedisBackendFactory::new(chain_id, redis_con_pool.clone()));
+        let cache_factory = new_cache_backend_factory(&args, chain_id)
+            .expect("fail to create cache backend factory");
 
-        let mut chain_state = ChainState::new(rpc_url.clone(), redis_backend_factory);
+        let mut chain_state = ChainState {
+            rpc_url: rpc_url.clone(),
+            cache_entries: Default::default(),
+            cache_factory,
+        };
 
         for factory in &handler_factories {
             let handler = factory();
             chain_state
                 .cache_entries
-                .insert(handler.method_name().to_string(), CacheEntry::new(handler));
+                .insert(handler.method_name().to_string(), CacheEntry { handler });
         }
 
         app_state.chains.insert(name.to_string(), chain_state);
@@ -340,13 +328,13 @@ async fn main() -> std::io::Result<()> {
 
     let app_state = web::Data::new(app_state);
 
-    tracing::info!("Server listening on {}:{}", arg.bind, arg.port);
+    tracing::info!("Server listening on {}:{}", args.bind, args.port);
 
     {
         let app_state = app_state.clone();
 
         HttpServer::new(move || App::new().service(rpc_call).app_data(app_state.clone()))
-            .bind((arg.bind, arg.port))?
+            .bind((args.bind, args.port))?
             .run()
             .await?;
     }
@@ -356,30 +344,42 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
+fn new_cache_backend_factory(
+    args: &Args,
+    chain_id: u64,
+) -> anyhow::Result<Box<dyn CacheBackendFactory>> {
+    let factory: Box<dyn CacheBackendFactory> = match &args.redis_url {
+        Some(redis_url) => {
+            tracing::info!("Using redis cache backend");
+
+            let client =
+                redis::Client::open(redis_url.as_ref()).context("fail to create redis client")?;
+
+            let conn_pool = r2d2::Pool::builder()
+                .max_size(300)
+                .build(client)
+                .context("fail to create redis connection pool")?;
+            let factory = RedisBackendFactory::new(chain_id, conn_pool);
+
+            Box::new(factory)
+        }
+        None => {
+            tracing::info!("Using in memory cache backend");
+            Box::new(memory_backend::MemoryBackendFactory::new())
+        }
+    };
+
+    Ok(factory)
+}
+
 struct ChainState {
     rpc_url: Url,
     cache_factory: Box<dyn CacheBackendFactory>,
     cache_entries: HashMap<String, CacheEntry>,
 }
 
-impl ChainState {
-    fn new(rpc_url: Url, cache_factory: Box<dyn CacheBackendFactory>) -> Self {
-        Self {
-            rpc_url,
-            cache_factory,
-            cache_entries: Default::default(),
-        }
-    }
-}
-
 struct CacheEntry {
     handler: Box<dyn RpcCacheHandler>,
-}
-
-impl CacheEntry {
-    fn new(handler: Box<dyn RpcCacheHandler>) -> Self {
-        Self { handler }
-    }
 }
 
 struct AppState {
@@ -387,7 +387,7 @@ struct AppState {
     http_client: reqwest::Client,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RpcRequest {
     index: usize,
     id: RequestId,
@@ -415,5 +415,16 @@ impl RpcRequest {
             params,
             cache_key: None,
         }
+    }
+}
+
+impl Serialize for RpcRequest {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        JsonRpcRequest::new(
+            Some(self.id.clone()),
+            self.method.clone(),
+            self.params.clone(),
+        )
+        .serialize(serializer)
     }
 }

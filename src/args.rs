@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-pub struct Cli {
+pub struct Args {
     #[arg(short, long, default_value = "127.0.0.1")]
     pub bind: String,
 
@@ -17,10 +17,9 @@ pub struct Cli {
     #[arg(
         short,
         long,
-        default_value = "redis://127.0.0.1:6379",
-        help = "Redis URL"
+        help = "Redis URL. If not suppiled, in memory cache backend will be used."
     )]
-    pub redis_url: String,
+    pub redis_url: Option<String>,
 }
 
 fn endpoint_parser(s: &str) -> Result<(String, Url), String> {

@@ -1,6 +1,7 @@
+use reqwest::Url;
 use serde_json::{json, Value};
 
-pub async fn get_chain_id(rpc_url: &str) -> anyhow::Result<u64> {
+pub async fn get_chain_id(client: &reqwest::Client, rpc_url: &str) -> anyhow::Result<u64> {
     let request_payload = json!({
         "jsonrpc": "2.0",
         "method": "eth_chainId",
@@ -8,7 +9,6 @@ pub async fn get_chain_id(rpc_url: &str) -> anyhow::Result<u64> {
         "id": 1
     });
 
-    let client = reqwest::Client::new();
     let response = client.post(rpc_url).json(&request_payload).send().await?;
 
     let json: Value = response.json().await?;
@@ -16,4 +16,20 @@ pub async fn get_chain_id(rpc_url: &str) -> anyhow::Result<u64> {
         Some(chain_id) => Ok(u64::from_str_radix(&chain_id[2..], 16)?),
         None => Err(anyhow::anyhow!("fail to get chain id: {json}")),
     }
+}
+
+pub async fn do_rpc_request(
+    client: &reqwest::Client,
+    rpc_url: Url,
+    body: &Value,
+) -> anyhow::Result<Value> {
+    let result = client
+        .post(rpc_url)
+        .json(body)
+        .send()
+        .await?
+        .json::<Value>()
+        .await?;
+
+    Ok(result)
 }

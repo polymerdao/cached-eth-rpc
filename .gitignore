@@ -2,5 +2,7 @@
 /target
 
 /run.sh
-data
-redis-dataflamegraph.svg
+/redis-data
+
+/*flamegraph.svg
+

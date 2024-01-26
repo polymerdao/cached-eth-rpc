@@ -26,9 +26,8 @@ RUN apt update  \
 RUN update-ca-certificates
 
 COPY --from=builder /app/target/release/cached-eth-rpc /app/cached-eth-rpc
-COPY ./docker-entrypoint.sh /app/docker-entrypoint.sh
 
 ENV ENDPOINTS="eth-chain=https://rpc.ankr.com/eth,bsc-chain=https://rpc.ankr.com/bsc"
 
 EXPOSE 8124
-CMD ["/app/docker-entrypoint.sh", "/app/cached-eth-rpc"]
+ENTRYPOINT [ "/app/cached-eth-rpc" ]

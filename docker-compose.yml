@@ -1,15 +1,27 @@
 version: "3"
 services:
-  docker-redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - ./redis-data:/data
   rpc:
     image: ghcr.io/fuzzland/cached-eth-rpc:latest
     ports:
       - "8124:8124"
-    environment:
-      - ENDPOINTS=eth-chain=https://rpc.ankr.com/eth,bsc-chain=https://rpc.ankr.com/bsc
-      - REDIS_URL=redis://docker-redis:6379
+    command:
+      - --port=8124
+      - --bind=0.0.0.0
+      - --endpoint=eth=https://rpc.ankr.com/eth
+      - --endpoint=bsc=https://rpc.ankr.com/bsc
+      - --redis-url=redis://docker-redis:6379
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./redis-data
+      o: bind

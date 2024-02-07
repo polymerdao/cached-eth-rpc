@@ -1,7 +1,6 @@
+use alloy_primitives::B256;
 use anyhow::Context;
-use primitive_types::H256;
 use serde_json::Value;
-use std::str::FromStr;
 
 use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
@@ -18,11 +17,9 @@ impl RpcCacheHandler for EthGetTransactionByHash {
             .as_array()
             .context("params not found or not an array")?;
 
-        let tx_hash = params[0].as_str().context("params[0] not a string")?;
-        let tx_hash = H256::from_str(tx_hash.trim_start_matches("0x"))
-            .context("params[0] not a valid hash")?;
+        let tx_hash: B256 = serde_json::from_value(params[0].clone())?;
 
-        Ok(Some(format!("0x{:x}", tx_hash)))
+        Ok(Some(format!("{tx_hash:#x}")))
     }
 
     fn extract_cache_value(&self, result: &Value) -> anyhow::Result<(bool, String)> {

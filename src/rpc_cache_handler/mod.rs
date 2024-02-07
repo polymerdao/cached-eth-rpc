@@ -1,20 +1,10 @@
 use anyhow::Result;
 use serde_json::Value;
 
-pub use eth_call::EthCall;
-pub use eth_chainid::EthChainId;
-pub use eth_get_balance::EthGetBalance;
-pub use eth_get_block_by_number::EthGetBlockByNumber;
-pub use eth_get_block_receipts::EthGetBlockReceipts;
-pub use eth_get_code::EthGetCode;
-pub use eth_get_storage_at::EthGetStorageAt;
-pub use eth_get_transaction_by_block_hash_and_index::EthGetTransactionByBlockHashAndIndex;
-pub use eth_get_transaction_by_block_number_and_index::EthGetTransactionByBlockNumberAndIndex;
-pub use eth_get_transaction_by_hash::EthGetTransactionByHash;
-pub use eth_get_transaction_count::EthGetTransactionCount;
-pub use eth_get_transaction_receipt::EthGetTransactionReceipt;
-
 mod common;
+mod debug_trace_block_by_hash;
+mod debug_trace_block_by_number;
+mod debug_trace_call;
 mod eth_call;
 mod eth_chainid;
 mod eth_get_balance;
@@ -42,17 +32,35 @@ pub type RpcCacheHandlerFactory = fn() -> Box<dyn RpcCacheHandler>;
 
 pub fn all_factories() -> Vec<RpcCacheHandlerFactory> {
     vec![
-        || Box::new(EthCall) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthChainId) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetBalance) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetBlockByNumber) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetBlockReceipts) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetCode) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetStorageAt) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetTransactionByBlockHashAndIndex) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetTransactionByBlockNumberAndIndex) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetTransactionByHash) as Box<dyn RpcCacheHandler>,
-        || Box::new(EthGetTransactionCount) as Box<dyn RpcCacheHandler>,
-        || Box::<EthGetTransactionReceipt>::default() as Box<dyn RpcCacheHandler>,
+        || Box::new(debug_trace_block_by_hash::DebugTraceBlockByHash) as Box<dyn RpcCacheHandler>,
+        || {
+            Box::new(debug_trace_block_by_number::DebugTraceBlockByNumber)
+                as Box<dyn RpcCacheHandler>
+        },
+        || Box::new(debug_trace_call::DebugTraceCall) as Box<dyn RpcCacheHandler>,
+        || Box::new(eth_call::EthCall) as Box<dyn RpcCacheHandler>,
+        || Box::new(eth_chainid::EthChainId) as Box<dyn RpcCacheHandler>,
+        || Box::new(eth_get_balance::EthGetBalance) as Box<dyn RpcCacheHandler>,
+        || Box::new(eth_get_block_by_number::EthGetBlockByNumber) as Box<dyn RpcCacheHandler>,
+        || Box::new(eth_get_block_receipts::EthGetBlockReceipts) as Box<dyn RpcCacheHandler>,
+        || Box::new(eth_get_code::EthGetCode) as Box<dyn RpcCacheHandler>,
+        || Box::new(eth_get_storage_at::EthGetStorageAt) as Box<dyn RpcCacheHandler>,
+        || {
+            Box::new(
+                eth_get_transaction_by_block_hash_and_index::EthGetTransactionByBlockHashAndIndex,
+            ) as Box<dyn RpcCacheHandler>
+        },
+        || {
+            Box::new(eth_get_transaction_by_block_number_and_index::EthGetTransactionByBlockNumberAndIndex) as Box<dyn RpcCacheHandler>
+        },
+        || {
+            Box::new(eth_get_transaction_by_hash::EthGetTransactionByHash)
+                as Box<dyn RpcCacheHandler>
+        },
+        || Box::new(eth_get_transaction_count::EthGetTransactionCount) as Box<dyn RpcCacheHandler>,
+        || {
+            Box::new(eth_get_transaction_receipt::EthGetTransactionReceipt)
+                as Box<dyn RpcCacheHandler>
+        },
     ]
 }

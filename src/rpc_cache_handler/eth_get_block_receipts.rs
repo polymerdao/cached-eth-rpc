@@ -1,7 +1,7 @@
 use anyhow::Context;
 use serde_json::Value;
 
-use crate::rpc_cache_handler::RpcCacheHandler;
+use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
 #[derive(Default, Clone)]
 pub struct EthGetBlockReceipts;
@@ -16,10 +16,13 @@ impl RpcCacheHandler for EthGetBlockReceipts {
             .as_array()
             .context("params not found or not an array")?;
 
-        let block_number = params[0].as_str().context("params[0] not a string")?;
-        let block_number =
-            u64::from_str_radix(&block_number[2..], 16).context("block number not a hex string")?;
+        let block_tag = common::extract_and_format_block_tag(&params[0])
+            .context("params[0] is not a valid block tag")?;
+        let block_tag = match block_tag {
+            Some(block_tag) => block_tag,
+            None => return Ok(None),
+        };
 
-        Ok(Some(format!("0x{:x}", block_number)))
+        Ok(Some(block_tag))
     }
 }

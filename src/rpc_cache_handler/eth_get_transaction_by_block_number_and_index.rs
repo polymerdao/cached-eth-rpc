@@ -1,3 +1,4 @@
+use alloy_primitives::U64;
 use anyhow::Context;
 use serde_json::Value;
 
@@ -16,15 +17,17 @@ impl RpcCacheHandler for EthGetTransactionByBlockNumberAndIndex {
             .as_array()
             .context("params not found or not an array")?;
 
-        let block_tag = params[0].as_str().context("params[0] not a string")?;
-        let block_tag = u64::from_str_radix(block_tag.trim_start_matches("0x"), 16)
-            .context("block tag not a valid hash")?;
+        let block_tag = common::extract_and_format_block_tag(&params[0])
+            .context("params[0] is not a valid block tag")?;
+        let block_tag = match block_tag {
+            Some(block_tag) => block_tag,
+            None => return Ok(None),
+        };
 
-        let tx_index = params[1].as_str().context("params[1] not a string")?;
-        let tx_index = u64::from_str_radix(tx_index.trim_start_matches("0x"), 16)
-            .context("tx index not a hex string")?;
+        let tx_index: U64 =
+            serde_json::from_value(params[1].clone()).context("params[1] is not a valid index")?;
 
-        Ok(Some(format!("0x{:x}-{}", block_tag, tx_index)))
+        Ok(Some(format!("{block_tag}-{tx_index}")))
     }
 
     fn extract_cache_value(&self, result: &Value) -> anyhow::Result<(bool, String)> {

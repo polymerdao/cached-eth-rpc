@@ -1,7 +1,6 @@
+use alloy_primitives::{B256, U64};
 use anyhow::Context;
-use primitive_types::H256;
 use serde_json::Value;
-use std::str::FromStr;
 
 use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
@@ -18,15 +17,12 @@ impl RpcCacheHandler for EthGetTransactionByBlockHashAndIndex {
             .as_array()
             .context("params not found or not an array")?;
 
-        let block_tag = params[0].as_str().context("params[0] not a string")?;
-        let block_tag = H256::from_str(block_tag.trim_start_matches("0x"))
-            .context("block tag not a valid hash")?;
+        let block_tag: B256 =
+            serde_json::from_value(params[0].clone()).context("params[0] is not a valid hash")?;
+        let tx_index: U64 =
+            serde_json::from_value(params[1].clone()).context("params[1] is not a valid index")?;
 
-        let tx_index = params[1].as_str().context("params[1] not a string")?;
-        let tx_index = u64::from_str_radix(tx_index.trim_start_matches("0x"), 16)
-            .context("tx index not a hex string")?;
-
-        Ok(Some(format!("0x{:x}-{}", block_tag, tx_index)))
+        Ok(Some(format!("{block_tag:#x}-{tx_index}")))
     }
 
     fn extract_cache_value(&self, result: &Value) -> anyhow::Result<(bool, String)> {

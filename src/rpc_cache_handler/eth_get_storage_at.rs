@@ -1,7 +1,8 @@
+use alloy_primitives::{Address, U256};
 use anyhow::Context;
 use serde_json::Value;
 
-use crate::rpc_cache_handler::RpcCacheHandler;
+use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
 #[derive(Default, Clone)]
 pub struct EthGetStorageAt;
@@ -16,21 +17,18 @@ impl RpcCacheHandler for EthGetStorageAt {
             .as_array()
             .context("params not found or not an array")?;
 
-        let account = params[0].as_str().context("params[0] not a string")?;
-        let slot = params[1].as_str().context("params[1] not a string")?;
-        let block_tag = params[2].as_str().context("params[2] not a string")?;
+        let block_tag = common::extract_and_format_block_tag(&params[2])
+            .context("params[2] is not a valid block tag")?;
+        let block_tag = match block_tag {
+            Some(block_tag) => block_tag,
+            None => return Ok(None),
+        };
 
-        if !block_tag.starts_with("0x") {
-            return Ok(None);
-        }
-        let block_number =
-            u64::from_str_radix(&block_tag[2..], 16).context("block number not a hex string")?;
+        let account: Address =
+            serde_json::from_value(params[0].clone()).context("params[0] not a valid address")?;
+        let slot: U256 =
+            serde_json::from_value(params[1].clone()).context("params[1] not a valid hex value")?;
 
-        Ok(Some(format!(
-            "0x{:x}-{}-{}",
-            block_number,
-            account.to_lowercase(),
-            slot
-        )))
+        Ok(Some(format!("{block_tag}-{account:#x}-{slot:#x}")))
     }
 }

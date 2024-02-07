@@ -1,7 +1,6 @@
 use serde_json::Value;
 
-use crate::rpc_cache_handler::common::extract_address_cache_key;
-use crate::rpc_cache_handler::RpcCacheHandler;
+use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
 #[derive(Default, Clone)]
 pub struct EthGetTransactionCount;
@@ -12,6 +11,6 @@ impl RpcCacheHandler for EthGetTransactionCount {
     }
 
     fn extract_cache_key(&self, params: &Value) -> anyhow::Result<Option<String>> {
-        extract_address_cache_key(params)
+        common::extract_address_cache_key(params)
     }
 }

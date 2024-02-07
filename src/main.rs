@@ -298,7 +298,7 @@ async fn main() -> std::io::Result<()> {
         http_client: reqwest::Client::new(),
     };
 
-    let handler_factories = rpc_cache_handler::all_factories();
+    let handler_factories = rpc_cache_handler::factories();
 
     for (name, rpc_url) in args.endpoints.iter() {
         tracing::info!("Linked `{name}` to endpoint {rpc_url}");

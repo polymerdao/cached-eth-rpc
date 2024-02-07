@@ -8,14 +8,22 @@ Multiple endpoints/chains can be configured to be cached.
 
 2. `docker-compose up`
 ### Usage
-With
+`redis-url` is optional
+
 ```shell
 cargo run --release -- \
+<<<<<<< HEAD
   --port=8124 \
   --bind=0.0.0.0 \
   --endpoint=eth=https://rpc.ankr.com/eth \
   --endpoint=bsc=https://rpc.ankr.com/bsc \
   --redis-url=redis://localhost:6379
+=======
+  --port 8124 \
+  --redis-url "redis://redis:6379" \
+  --endpoint "eth=https://rpc.ankr.com/eth" \
+  --endpoint "bsc=https://rpc.ankr.com/bsc"
+>>>>>>> ab7ad00 (add more methods and fix docker spec)
 ```
 Following redirection will be made:
 * http://localhost:8124/eth -> https://rpc.ankr.com/eth
@@ -26,13 +34,21 @@ Mainly supported requests with determined block number. Other methods will be di
 
 - `eth_call`
 - `eth_chainId`
+- `eth_estimateGas`
 - `eth_getBalance`
+- `eth_getBlockByHash`
 - `eth_getBlockByNumber`
 - `eth_getBlockReceipts`
 - `eth_getCode`
+- `eth_getLogs`
 - `eth_getStorageAt`
+- `eth_getTransactionByBlockHashAndIndex`
+- `eth_getTransactionByBlockNumberAndIndex`
 - `eth_getTransactionByHash`
 - `eth_getTransactionCount`
 - `eth_getTransactionReceipt`
-- `eth_getTransactionByBlockNumberAndIndex`
-- `eth_getTransactionByBlockHashAndIndex`
+
+- `debug_traceBlockByHash`
+- `debug_traceBlockByNumber`
+- `debug_traceCall`
+- `debug_traceTransaction`

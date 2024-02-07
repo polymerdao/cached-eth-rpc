@@ -11,16 +11,18 @@ pub enum ParamsSpec {
 }
 
 pub fn require_array_params(params: &Value, len: ParamsSpec) -> anyhow::Result<&Vec<Value>> {
-    let array = params
-        .as_array()
-        .context("expect params to be an array")?;
+    let array = params.as_array().context("expect params to be an array")?;
 
     match len {
         ParamsSpec::Exact(expected_len) if array.len() != expected_len => {
             anyhow::bail!("expected {} params, got {}", expected_len, array.len());
         }
         ParamsSpec::AtLeast(expected_len) if array.len() < expected_len => {
-            anyhow::bail!("expected at least {} params, got {}", expected_len, array.len());
+            anyhow::bail!(
+                "expected at least {} params, got {}",
+                expected_len,
+                array.len()
+            );
         }
         _ => {}
     };
@@ -34,7 +36,9 @@ pub fn extract_address_cache_key(params: &Value) -> anyhow::Result<Option<String
     let account: Address =
         serde_json::from_value(params[0].clone()).context("params[0] not a valid address")?;
 
-    let block_tag = match extract_and_format_block_tag(&params[1]).context("params[1] not a valid block tag")? {
+    let block_tag = match extract_and_format_block_tag(&params[1])
+        .context("params[1] not a valid block tag")?
+    {
         Some(block_tag) => block_tag,
         None => return Ok(None),
     };
@@ -54,13 +58,11 @@ pub fn extract_and_format_block_number(value: &Value) -> anyhow::Result<Option<S
     let value = value.as_str().context("block tag not a string")?;
 
     let block_tag = match value {
-        "earliest" |
-        "latest" |
-        "pending" |
-        "finalized" |
-        "safe" => None,
+        "earliest" | "latest" | "pending" | "finalized" | "safe" => None,
         _ => {
-            let v = U64::from_str(value).context("block tag not a valid block number")?.as_limbs()[0];
+            let v = U64::from_str(value)
+                .context("block tag not a valid block number")?
+                .as_limbs()[0];
             Some(format!("0x{:x}", v))
         }
     };
@@ -136,13 +138,25 @@ mod test {
 
         #[test]
         fn test_block_hash() {
-            let block_tag = extract_and_format_block_tag(&json!("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")).unwrap();
-            assert_eq!(block_tag, Some("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string()));
+            let block_tag = extract_and_format_block_tag(&json!(
+                "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+            ))
+            .unwrap();
+            assert_eq!(
+                block_tag,
+                Some(
+                    "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                        .to_string()
+                )
+            );
         }
 
         #[test]
         fn test_invalid_block_hash() {
-            let block_tag = extract_and_format_block_tag(&json!("0x1234567890abcdef1234567890abcdef1234567890abcdef123456789ggggggg")).unwrap_err();
+            let block_tag = extract_and_format_block_tag(&json!(
+                "0x1234567890abcdef1234567890abcdef1234567890abcdef123456789ggggggg"
+            ))
+            .unwrap_err();
 
             assert_eq!(block_tag.to_string(), "expect a valid block hash");
         }
@@ -167,21 +181,18 @@ mod test {
 
         #[test]
         fn test_fixed_block() {
-            let params = json!([
-                "0x1234567890abcdef1234567890abcdef12345678",
-                "0x12345"
-            ]);
+            let params = json!(["0x1234567890abcdef1234567890abcdef12345678", "0x12345"]);
 
             let cache_key = extract_address_cache_key(&params).unwrap().unwrap();
-            assert_eq!(cache_key, "0x12345-0x1234567890abcdef1234567890abcdef12345678");
+            assert_eq!(
+                cache_key,
+                "0x12345-0x1234567890abcdef1234567890abcdef12345678"
+            );
         }
 
         #[test]
         fn test_with_block_tag() {
-            let params = json!([
-                "0x1234567890abcdef1234567890abcdef12345678",
-                "earliest"
-            ]);
+            let params = json!(["0x1234567890abcdef1234567890abcdef12345678", "earliest"]);
 
             let cache_key = extract_address_cache_key(&params).unwrap();
             assert_eq!(cache_key, None);
@@ -189,10 +200,7 @@ mod test {
 
         #[test]
         fn test_invalid_address() {
-            let params = json!([
-                "0x1234567890abcdef1234567890abcdef1234gggg",
-                "latest"
-            ]);
+            let params = json!(["0x1234567890abcdef1234567890abcdef1234gggg", "latest"]);
 
             let err = extract_address_cache_key(&params).unwrap_err();
             assert_eq!(err.to_string(), "params[0] not a valid address");
@@ -200,10 +208,7 @@ mod test {
 
         #[test]
         fn test_invalid_block_tag() {
-            let params = json!([
-                "0x1234567890abcdef1234567890abcdef12345678",
-                "ggg tag"
-            ]);
+            let params = json!(["0x1234567890abcdef1234567890abcdef12345678", "ggg tag"]);
 
             let err = extract_address_cache_key(&params).unwrap_err();
             assert_eq!(err.to_string(), "params[1] not a valid block tag");

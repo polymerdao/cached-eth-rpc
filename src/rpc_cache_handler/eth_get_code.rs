@@ -1,9 +1,11 @@
 use serde_json::Value;
 
-use crate::rpc_cache_handler::{common, RpcCacheHandler};
+use crate::rpc_cache_handler::RpcCacheHandler;
 
 #[derive(Default, Clone)]
-pub struct Handler;
+pub struct Handler {
+    inner: super::eth_get_balance::Handler,
+}
 
 impl RpcCacheHandler for Handler {
     fn method_name(&self) -> &'static str {
@@ -11,6 +13,6 @@ impl RpcCacheHandler for Handler {
     }
 
     fn extract_cache_key(&self, params: &Value) -> anyhow::Result<Option<String>> {
-        common::extract_address_cache_key(params)
+        self.inner.extract_cache_key(params)
     }
 }

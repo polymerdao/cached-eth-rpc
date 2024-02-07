@@ -14,7 +14,8 @@ impl RpcCacheHandler for Handler {
 
     fn extract_cache_key(&self, params: &Value) -> anyhow::Result<Option<String>> {
         let params = common::require_array_params(params, common::ParamsSpec::Exact(1))?;
-        let tx_hash: B256 = serde_json::from_value(params[0].clone()).context("params[0] is not a valid transaction hash")?;
+        let tx_hash: B256 = serde_json::from_value(params[0].clone())
+            .context("params[0] is not a valid transaction hash")?;
 
         Ok(Some(format!("{tx_hash:#x}")))
     }
@@ -34,16 +35,28 @@ mod test {
     #[test]
     fn test_invalid_params_len() {
         let params = json!([]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 1 params, got 0");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 1 params, got 0"
+        );
 
-        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", 123]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 1 params, got 2");
+        let params = json!([
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            123
+        ]);
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 1 params, got 2"
+        );
     }
 
     #[test]
     fn test_normal_case() {
         let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]);
         let cache_key = HANDLER.extract_cache_key(&params).unwrap().unwrap();
-        assert_eq!(cache_key, "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+        assert_eq!(
+            cache_key,
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        );
     }
 }

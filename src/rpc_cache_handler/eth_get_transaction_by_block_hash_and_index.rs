@@ -28,7 +28,6 @@ impl RpcCacheHandler for Handler {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -39,40 +38,79 @@ mod test {
     #[test]
     fn test_invalid_params_len() {
         let params = json!([]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 2 params, got 0");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 2 params, got 0"
+        );
 
         let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 2 params, got 1");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 2 params, got 1"
+        );
 
-        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", 123, 456]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 2 params, got 3");
+        let params = json!([
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            123,
+            456
+        ]);
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 2 params, got 3"
+        );
     }
 
     #[test]
     fn test_normal_case() {
-        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", 0]);
+        let params = json!([
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            0
+        ]);
         let cache_key = HANDLER.extract_cache_key(&params).unwrap().unwrap();
-        assert_eq!(cache_key, "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef-0");
+        assert_eq!(
+            cache_key,
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef-0"
+        );
 
-        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", 1234]);
+        let params = json!([
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            1234
+        ]);
         let cache_key = HANDLER.extract_cache_key(&params).unwrap().unwrap();
-        assert_eq!(cache_key, "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef-1234");
+        assert_eq!(
+            cache_key,
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef-1234"
+        );
 
-
-        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", "0x1234"]);
+        let params = json!([
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "0x1234"
+        ]);
         let cache_key = HANDLER.extract_cache_key(&params).unwrap().unwrap();
-        assert_eq!(cache_key, "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef-4660");
+        assert_eq!(
+            cache_key,
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef-4660"
+        );
     }
 
     #[test]
     fn test_invalid_block_hash() {
         let params = json!(["gg", 0]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "params[0] is not a valid block hash");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "params[0] is not a valid block hash"
+        );
     }
 
     #[test]
     fn test_invalid_tx_index() {
-        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", "gg"]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "params[1] is not a valid index");
+        let params = json!([
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "gg"
+        ]);
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "params[1] is not a valid index"
+        );
     }
 }

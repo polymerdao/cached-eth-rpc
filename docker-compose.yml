@@ -9,7 +9,7 @@ services:
       - --bind=0.0.0.0
       - --endpoint=eth=https://rpc.ankr.com/eth
       - --endpoint=bsc=https://rpc.ankr.com/bsc
-      - --redis-url=redis://docker-redis:6379
+      - --redis-url=redis://redis:6379
 
   redis:
     image: redis:alpine

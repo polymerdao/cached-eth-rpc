@@ -1,8 +1,8 @@
 use anyhow::Context;
 use serde_json::Value;
 
-use crate::rpc_cache_handler::{common, RpcCacheHandler};
 use crate::rpc_cache_handler::common::ParamsSpec;
+use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
 #[derive(Default, Clone)]
 pub struct Handler;
@@ -61,9 +61,7 @@ mod test {
 
     #[test]
     fn test_normal_case_without_tracer_config() {
-        let params = json!([
-            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-        ]);
+        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]);
 
         let cache_key = HANDLER.extract_cache_key(&params).unwrap().unwrap();
         assert_eq!(
@@ -74,9 +72,7 @@ mod test {
 
     #[test]
     fn test_invalid_block_hash() {
-        let params = json!([
-            "0x1234567890abcdef1234567890abcdef1234567890abcdef123456789ggggggg"
-        ]);
+        let params = json!(["0x1234567890abcdef1234567890abcdef1234567890abcdef123456789ggggggg"]);
 
         let err = HANDLER.extract_cache_key(&params).unwrap_err();
         assert_eq!(err.to_string(), "params[0] not a valid block hash");

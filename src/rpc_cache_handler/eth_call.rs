@@ -14,8 +14,14 @@ impl RpcCacheHandler for Handler {
     fn extract_cache_key(&self, params: &Value) -> anyhow::Result<Option<String>> {
         let params = common::require_array_params(params, common::ParamsSpec::AtLeast(1))?;
 
-        let tx = serde_json::to_string(params[0].as_object().context("params[0] not a transaction call object")?).unwrap();
-        let block_tag = common::extract_and_format_block_tag(&params[1]).context("params[1] not a valid block tag")?;
+        let tx = serde_json::to_string(
+            params[0]
+                .as_object()
+                .context("params[0] not a transaction call object")?,
+        )
+        .unwrap();
+        let block_tag = common::extract_and_format_block_tag(&params[1])
+            .context("params[1] not a valid block tag")?;
         let block_tag = match block_tag {
             Some(block_tag) => block_tag,
             None => return Ok(None),
@@ -54,9 +60,7 @@ mod test {
 
     #[test]
     fn test_invalid_tx() {
-        let params = json!([
-            "0xgg"
-        ]);
+        let params = json!(["0xgg"]);
 
         let err = HANDLER.extract_cache_key(&params).unwrap_err();
         assert_eq!(err.to_string(), "params[0] not a transaction call object");

@@ -43,13 +43,22 @@ mod test {
     #[test]
     fn test_invalid_params_len() {
         let params = json!([]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 2 params, got 0");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 2 params, got 0"
+        );
 
         let params = json!(["0x12345"]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 2 params, got 1");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 2 params, got 1"
+        );
 
         let params = json!(["0x12345", 123, 456]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "expected 2 params, got 3");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "expected 2 params, got 3"
+        );
     }
 
     #[test]
@@ -76,6 +85,9 @@ mod test {
     #[test]
     fn test_invalid_tx_index() {
         let params = json!(["0x12345", "gg"]);
-        assert_eq!(HANDLER.extract_cache_key(&params).unwrap_err().to_string(), "params[1] is not a valid index");
+        assert_eq!(
+            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
+            "params[1] is not a valid index"
+        );
     }
 }

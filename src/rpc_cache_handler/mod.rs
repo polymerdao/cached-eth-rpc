@@ -8,6 +8,7 @@ mod debug_trace_call;
 mod eth_call;
 mod eth_chainid;
 mod eth_get_balance;
+mod eth_get_block_by_hash;
 mod eth_get_block_by_number;
 mod eth_get_block_receipts;
 mod eth_get_code;
@@ -30,37 +31,29 @@ pub trait RpcCacheHandler: Send + Sync {
 
 pub type RpcCacheHandlerFactory = fn() -> Box<dyn RpcCacheHandler>;
 
+macro_rules! define_factory {
+    ($HandlerType: expr) => {
+        || Box::new($HandlerType) as Box<dyn RpcCacheHandler>
+    };
+}
+
 pub fn all_factories() -> Vec<RpcCacheHandlerFactory> {
     vec![
-        || Box::new(debug_trace_block_by_hash::DebugTraceBlockByHash) as Box<dyn RpcCacheHandler>,
-        || {
-            Box::new(debug_trace_block_by_number::DebugTraceBlockByNumber)
-                as Box<dyn RpcCacheHandler>
-        },
-        || Box::new(debug_trace_call::DebugTraceCall) as Box<dyn RpcCacheHandler>,
-        || Box::new(eth_call::EthCall) as Box<dyn RpcCacheHandler>,
-        || Box::new(eth_chainid::EthChainId) as Box<dyn RpcCacheHandler>,
-        || Box::new(eth_get_balance::EthGetBalance) as Box<dyn RpcCacheHandler>,
-        || Box::new(eth_get_block_by_number::EthGetBlockByNumber) as Box<dyn RpcCacheHandler>,
-        || Box::new(eth_get_block_receipts::EthGetBlockReceipts) as Box<dyn RpcCacheHandler>,
-        || Box::new(eth_get_code::EthGetCode) as Box<dyn RpcCacheHandler>,
-        || Box::new(eth_get_storage_at::EthGetStorageAt) as Box<dyn RpcCacheHandler>,
-        || {
-            Box::new(
-                eth_get_transaction_by_block_hash_and_index::EthGetTransactionByBlockHashAndIndex,
-            ) as Box<dyn RpcCacheHandler>
-        },
-        || {
-            Box::new(eth_get_transaction_by_block_number_and_index::EthGetTransactionByBlockNumberAndIndex) as Box<dyn RpcCacheHandler>
-        },
-        || {
-            Box::new(eth_get_transaction_by_hash::EthGetTransactionByHash)
-                as Box<dyn RpcCacheHandler>
-        },
-        || Box::new(eth_get_transaction_count::EthGetTransactionCount) as Box<dyn RpcCacheHandler>,
-        || {
-            Box::new(eth_get_transaction_receipt::EthGetTransactionReceipt)
-                as Box<dyn RpcCacheHandler>
-        },
+        define_factory!(debug_trace_block_by_hash::Handler),
+        define_factory!(debug_trace_block_by_number::Handler),
+        define_factory!(debug_trace_call::Handler),
+        define_factory!(eth_call::Handler),
+        define_factory!(eth_chainid::Handler),
+        define_factory!(eth_get_balance::Handler),
+        define_factory!(eth_get_block_by_hash::Handler),
+        define_factory!(eth_get_block_by_number::Handler),
+        define_factory!(eth_get_block_receipts::Handler),
+        define_factory!(eth_get_code::Handler),
+        define_factory!(eth_get_storage_at::Handler),
+        define_factory!(eth_get_transaction_by_block_hash_and_index::Handler),
+        define_factory!(eth_get_transaction_by_block_number_and_index::Handler),
+        define_factory!(eth_get_transaction_by_hash::Handler),
+        define_factory!(eth_get_transaction_count::Handler),
+        define_factory!(eth_get_transaction_receipt::Handler),
     ]
 }

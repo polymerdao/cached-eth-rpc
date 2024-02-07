@@ -1,7 +1,6 @@
 use serde_json::Value;
 
-use crate::rpc_cache_handler::common::ParamsSpec;
-use crate::rpc_cache_handler::{common, RpcCacheHandler};
+use crate::rpc_cache_handler::RpcCacheHandler;
 
 #[derive(Default, Clone)]
 pub struct Handler;
@@ -11,9 +10,7 @@ impl RpcCacheHandler for Handler {
         "eth_chainId"
     }
 
-    fn extract_cache_key(&self, params: &Value) -> anyhow::Result<Option<String>> {
-        common::require_array_params(params, ParamsSpec::Exact(0))?;
-
+    fn extract_cache_key(&self, _: &Value) -> anyhow::Result<Option<String>> {
         Ok(Some("static".to_string()))
     }
 }
@@ -25,14 +22,6 @@ mod test {
 
     static HANDLER: Handler = Handler;
 
-    #[test]
-    fn test_invalid_params_len() {
-        let params = json!([1]);
-        assert_eq!(
-            HANDLER.extract_cache_key(&params).unwrap_err().to_string(),
-            "expected 0 params, got 1"
-        );
-    }
 
     #[test]
     fn test() {

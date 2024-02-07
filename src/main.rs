@@ -23,11 +23,11 @@ mod utils;
 
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
-    path: web::Path<(String,)>,
+    path: web::Path<(String, )>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let (chain,) = path.into_inner();
+    let (chain, ) = path.into_inner();
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -48,7 +48,7 @@ async fn rpc_call(
         let mut cache_backend = match chain_state.cache_factory.get_instance() {
             Ok(v) => v,
             Err(err) => {
-                tracing::error!("fail to get cache backend because: {}", err);
+                tracing::error!("fail to get cache backend because: {err:#}");
                 return JsonRpcResponse::from_error(
                     None,
                     DefinedError::InternalError(Some(json!({
@@ -56,7 +56,7 @@ async fn rpc_call(
                         "reason": err.to_string(),
                     }))),
                 )
-                .into();
+                    .into();
             }
         };
 
@@ -88,14 +88,21 @@ async fn rpc_call(
 
             let cache_entry = match chain_state.cache_entries.get(&method) {
                 Some(cache_entry) => cache_entry,
-                None => push_uncached_request_and_continue!(),
+                None => {
+                    tracing::warn!(method, "cache is not supported");
+                    push_uncached_request_and_continue!()
+                },
             };
 
             let params_key = match cache_entry.handler.extract_cache_key(&params) {
                 Ok(Some(params_key)) => params_key,
                 Ok(None) => push_uncached_request_and_continue!(),
                 Err(err) => {
-                    tracing::error!("fail to extract cache key because: {}", err);
+                    tracing::error!(
+                        method,
+                        params = format_args!("{}", params),
+                        "fail to extract cache key: {err:#}",
+                    );
                     push_uncached_request_and_continue!();
                 }
             };
@@ -110,7 +117,7 @@ async fn rpc_call(
                     push_uncached_request_and_continue!(key);
                 }
                 Err(err) => {
-                    tracing::error!("fail to read cache because: {}", err);
+                    tracing::error!("fail to read cache because: {err:#}");
                     push_uncached_request_and_continue!();
                 }
             }
@@ -426,6 +433,6 @@ impl Serialize for RpcRequest {
             self.method.clone(),
             self.params.clone(),
         )
-        .serialize(serializer)
+            .serialize(serializer)
     }
 }

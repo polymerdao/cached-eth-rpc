@@ -9,7 +9,7 @@ pub struct Handler;
 
 impl RpcCacheHandler for Handler {
     fn method_name(&self) -> &'static str {
-        "debug_traceCall"
+        "debug_traceTransaction"
     }
 
     fn extract_cache_key(&self, params: &Value) -> anyhow::Result<Option<String>> {

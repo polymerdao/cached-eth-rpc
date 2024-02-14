@@ -12,18 +12,11 @@ Multiple endpoints/chains can be configured to be cached.
 
 ```shell
 cargo run --release -- \
-<<<<<<< HEAD
   --port=8124 \
   --bind=0.0.0.0 \
   --endpoint=eth=https://rpc.ankr.com/eth \
   --endpoint=bsc=https://rpc.ankr.com/bsc \
   --redis-url=redis://localhost:6379
-=======
-  --port 8124 \
-  --redis-url "redis://redis:6379" \
-  --endpoint "eth=https://rpc.ankr.com/eth" \
-  --endpoint "bsc=https://rpc.ankr.com/bsc"
->>>>>>> ab7ad00 (add more methods and fix docker spec)
 ```
 Following redirection will be made:
 * http://localhost:8124/eth -> https://rpc.ankr.com/eth

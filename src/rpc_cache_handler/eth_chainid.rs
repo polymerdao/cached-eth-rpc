@@ -22,7 +22,6 @@ mod test {
 
     static HANDLER: Handler = Handler;
 
-
     #[test]
     fn test() {
         let params = json!([]);

@@ -23,11 +23,11 @@ mod utils;
 
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
-    path: web::Path<(String, )>,
+    path: web::Path<(String,)>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
-    let (chain, ) = path.into_inner();
+    let (chain,) = path.into_inner();
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -56,7 +56,7 @@ async fn rpc_call(
                         "reason": err.to_string(),
                     }))),
                 )
-                    .into();
+                .into();
             }
         };
 
@@ -91,7 +91,7 @@ async fn rpc_call(
                 None => {
                     tracing::warn!(method, "cache is not supported");
                     push_uncached_request_and_continue!()
-                },
+                }
             };
 
             let params_key = match cache_entry.handler.extract_cache_key(&params) {
@@ -433,6 +433,6 @@ impl Serialize for RpcRequest {
             self.method.clone(),
             self.params.clone(),
         )
-            .serialize(serializer)
+        .serialize(serializer)
     }
 }

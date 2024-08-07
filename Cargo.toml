@@ -11,7 +11,7 @@ alloy-primitives = { version = "0.7", features = ["serde"] }
 anyhow = "1.0"
 async-trait = "0.1"
 clap = { version = "4.4", features = ["derive"] }
-dashmap = { version = "5.5", features = ["serde"] }
+dashmap = { version = "6.0", features = ["serde"] }
 env_logger = "0.11"
 hex = "0.4"
 r2d2 = "0.8"

@@ -26,6 +26,6 @@ RUN apk update && apk add --no-cache \
 # openssl?
 
 COPY --from=builder /app/target/release/cached-eth-rpc /app/cached-eth-rpc
-COPY --from=builder /app/entrypoint.sh /app/entrypoint.sh
+COPY ./entrypoint.sh /app/entrypoint.sh
 
 ENTRYPOINT [ "/app/cached-eth-rpc" ]

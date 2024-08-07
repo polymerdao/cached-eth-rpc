@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.4"
-alloy-primitives = { version = "0.6", features = ["serde"] }
+alloy-primitives = { version = "0.7", features = ["serde"] }
 anyhow = "1.0"
 async-trait = "0.1"
 clap = { version = "4.4", features = ["derive"] }

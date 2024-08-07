@@ -1,5 +1,5 @@
 # ETH RPC Cache Layer
-A simple http server to cache specific eth rpc requests in memory. Useful for massive repeatedly requests to ETH rpc endpoints. 
+A simple http server to cache specific eth rpc requests in memory. Useful for massive repeatedly requests to ETH rpc endpoints.
 Multiple endpoints/chains can be configured to be cached.
 
 ### Usage (with docker)
@@ -45,3 +45,4 @@ Mainly supported requests with determined block number. Other methods will be di
 - `debug_traceBlockByNumber`
 - `debug_traceCall`
 - `debug_traceTransaction`
+-

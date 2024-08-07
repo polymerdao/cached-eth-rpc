@@ -26,8 +26,6 @@ RUN apk update && apk add --no-cache \
 # openssl?
 
 COPY --from=builder /app/target/release/cached-eth-rpc /app/cached-eth-rpc
+COPY --from=builder /app/entrypoint.sh /app/entrypoint.sh
 
-ENV ENDPOINTS="eth-chain=https://rpc.ankr.com/eth,bsc-chain=https://rpc.ankr.com/bsc"
-
-EXPOSE 8124
 ENTRYPOINT [ "/app/cached-eth-rpc" ]

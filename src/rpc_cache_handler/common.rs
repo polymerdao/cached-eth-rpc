@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use alloy_primitives::{Address, B256, U64};
 use anyhow::{bail, Context};
+use chrono::Local;
 use serde_json::Value;
 use sha1::Digest;
 
@@ -98,6 +99,13 @@ pub fn hash_string(s: &str) -> String {
     let result = hasher.finalize();
 
     hex::encode(result.as_slice())
+}
+
+pub fn compute_cache_bucket(ttl: i64) -> i64 {
+    let now = Local::now();
+    let ts = now.timestamp();
+    let bucket = ts - ts % ttl;
+    bucket
 }
 
 #[cfg(test)]

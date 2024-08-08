@@ -14,6 +14,12 @@ pub struct Args {
     #[arg(short, long = "endpoint", value_parser = endpoint_parser)]
     pub endpoints: Vec<(String, Url)>,
 
+    #[arg(short, long, default_value = "100000")]
+    pub lru_max_items: usize,
+
+    #[arg(short, long = "cache", default_value = "lru", value_parser = cache_backend_parser)]
+    pub cache_type: String,
+
     #[arg(
         short,
         long,
@@ -33,4 +39,14 @@ fn endpoint_parser(s: &str) -> Result<(String, Url), String> {
     let name = part[0].to_uppercase();
 
     Ok((name, url))
+}
+
+fn cache_backend_parser(s: &str) -> Result<String, String> {
+    match s {
+        "memory" => {}
+        "lru" => {}
+        "redis" => {}
+        _ => return Err(format!("Invalid cache backend: {}", s)),
+    }
+    Ok(s.to_owned())
 }

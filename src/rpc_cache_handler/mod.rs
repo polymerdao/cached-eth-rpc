@@ -21,6 +21,7 @@ mod eth_get_transaction_by_block_number_and_index;
 mod eth_get_transaction_by_hash;
 mod eth_get_transaction_count;
 mod eth_get_transaction_receipt;
+mod eth_max_priority_fee_per_gas;
 
 pub trait RpcCacheHandler: Send + Sync {
     fn method_name(&self) -> &'static str;
@@ -62,5 +63,6 @@ pub fn factories() -> Vec<RpcCacheHandlerFactory> {
         get_factory::<eth_get_transaction_by_hash::Handler>(),
         get_factory::<eth_get_transaction_count::Handler>(),
         get_factory::<eth_get_transaction_receipt::Handler>(),
+        get_factory::<eth_max_priority_fee_per_gas::Handler>(),
     ]
 }

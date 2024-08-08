@@ -1,3 +1,4 @@
+pub mod lru_backend;
 pub mod memory_backend;
 pub mod redis_backend;
 

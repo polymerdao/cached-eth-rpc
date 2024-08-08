@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use actix_web::{error, web, App, Error, HttpResponse, HttpServer};
 use anyhow::Context;
-use cache::{memory_backend, CacheBackendFactory};
+use cache::{lru_backend, memory_backend, CacheBackendFactory};
 use clap::Parser;
 use env_logger::Env;
 use reqwest::Url;
@@ -45,6 +45,7 @@ async fn rpc_call(
 
     // Scope the redis connection
     {
+        // retrieve the caching backend (memory, redis, etc)
         let mut cache_backend = match chain_state.cache_factory.get_instance() {
             Ok(v) => v,
             Err(err) => {
@@ -60,6 +61,7 @@ async fn rpc_call(
             }
         };
 
+        // iterate through each request looking for the result in cache and aggregating uncached requests
         for (index, request) in requests.into_iter().enumerate() {
             let (id, method, params) = match extract_single_request_info(request) {
                 Ok(v) => v,
@@ -86,6 +88,7 @@ async fn rpc_call(
                 }};
             }
 
+            // retrieve the handler for the requested method
             let cache_entry = match chain_state.cache_entries.get(&method) {
                 Some(cache_entry) => cache_entry,
                 None => {
@@ -94,6 +97,7 @@ async fn rpc_call(
                 }
             };
 
+            // get the cache key from the handler based on the request params
             let params_key = match cache_entry.handler.extract_cache_key(&params) {
                 Ok(Some(params_key)) => params_key,
                 Ok(None) => push_uncached_request_and_continue!(),
@@ -107,6 +111,7 @@ async fn rpc_call(
                 }
             };
 
+            // read results from cache
             match cache_backend.read(&method, &params_key) {
                 Ok(CacheStatus::Cached { key, value }) => {
                     tracing::info!("cache hit for method {} with key {}", method, key);
@@ -133,16 +138,19 @@ async fn rpc_call(
         };
     }
 
+    // if nothing to cache then return empty response
     if uncached_requests.is_empty() {
         return_response!();
     }
 
+    // prepare rpc and return the result future
     let rpc_result = utils::do_rpc_request(
         &data.http_client,
         chain_state.rpc_url.clone(),
         &uncached_requests,
     );
 
+    // await the rpc response, for each cache miss record the response
     let rpc_result = match rpc_result.await {
         Ok(v) => v,
         Err(err) => {
@@ -162,6 +170,7 @@ async fn rpc_call(
         }
     };
 
+    // unwrap rpc_result into a vector of responses
     let result_values = match rpc_result {
         Value::Array(v) => v,
         _ => {
@@ -185,6 +194,7 @@ async fn rpc_call(
         }
     };
 
+    // ensure we got the expected number of responses
     if result_values.len() != uncached_requests.len() {
         tracing::warn!(
             "rpc response length mismatch, expected: {}, got: {}",
@@ -193,6 +203,7 @@ async fn rpc_call(
         );
     }
 
+    // get the cache backend
     let mut cache_backend = match chain_state.cache_factory.get_instance() {
         Ok(v) => v,
         Err(err) => {
@@ -212,6 +223,10 @@ async fn rpc_call(
         }
     };
 
+    // for each response, get the corresponding request
+    // if the response was an error, record an error result and continue
+    // else assign the response and extract the cache key for insertion
+    // into the cache backend.
     for (index, mut response) in result_values.into_iter().enumerate() {
         let rpc_request = match RequestId::try_from(response["id"].clone()) {
             Ok(id) if request_id_index_map.get(&id).is_some() => {
@@ -355,25 +370,42 @@ fn new_cache_backend_factory(
     args: &Args,
     chain_id: u64,
 ) -> anyhow::Result<Box<dyn CacheBackendFactory>> {
-    let factory: Box<dyn CacheBackendFactory> = match &args.redis_url {
-        Some(redis_url) => {
-            tracing::info!("Using redis cache backend");
+    let factory: Box<dyn CacheBackendFactory> = match args.cache_type.as_str() {
+        "redis" => match &args.redis_url {
+            Some(redis_url) => {
+                tracing::info!("Using redis cache backend");
 
-            let client =
-                redis::Client::open(redis_url.as_ref()).context("fail to create redis client")?;
+                let client = redis::Client::open(redis_url.as_ref())
+                    .context("fail to create redis client")?;
 
-            let conn_pool = r2d2::Pool::builder()
-                .max_size(300)
-                .test_on_check_out(false)
-                .build(client)
-                .context("fail to create redis connection pool")?;
-            let factory = RedisBackendFactory::new(chain_id, conn_pool);
+                let conn_pool = r2d2::Pool::builder()
+                    .max_size(300)
+                    .test_on_check_out(false)
+                    .build(client)
+                    .context("fail to create redis connection pool")?;
+                let factory = RedisBackendFactory::new(chain_id, conn_pool);
 
-            Box::new(factory)
-        }
-        None => {
+                Box::new(factory)
+            }
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Must specify redis url when using redis cache backend!"
+                ));
+            }
+        },
+        "memory" => {
             tracing::info!("Using in memory cache backend");
             Box::new(memory_backend::MemoryBackendFactory::new())
+        }
+        "lru" => {
+            tracing::info!("Using in LRU cache backend");
+            Box::new(lru_backend::LruBackendFactory::new(args.lru_max_items))
+        }
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unknown cache backend specified: {}!",
+                args.cache_type
+            ));
         }
     };
 

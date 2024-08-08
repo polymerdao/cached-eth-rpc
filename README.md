@@ -16,7 +16,9 @@ cargo run --release -- \
   --bind=0.0.0.0 \
   --endpoint=eth=https://rpc.ankr.com/eth \
   --endpoint=bsc=https://rpc.ankr.com/bsc \
-  --redis-url=redis://localhost:6379
+  --redis-url=redis://localhost:6379 \
+  --cache=<lru|memory|redis> [default=lru] \
+  --max-lru-items=<number> [default=100000]
 ```
 Following redirection will be made:
 * http://localhost:8124/eth -> https://rpc.ankr.com/eth
@@ -34,6 +36,7 @@ Mainly supported requests with determined block number. Other methods will be di
 - `eth_getBlockReceipts`
 - `eth_getCode`
 - `eth_getLogs`
+- `eth_maxPriorityFeePerGas`
 - `eth_getStorageAt`
 - `eth_getTransactionByBlockHashAndIndex`
 - `eth_getTransactionByBlockNumberAndIndex`

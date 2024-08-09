@@ -20,6 +20,11 @@ impl RpcCacheHandler for Handler {
                 .context("params[0] not a transaction call object")?,
         )
         .unwrap();
+
+        if params.len() < 2 {
+            return Ok(None);
+        }
+
         let block_tag = common::extract_and_format_block_tag(&params[1])
             .context("params[1] not a valid block tag")?;
         let block_tag = match block_tag {

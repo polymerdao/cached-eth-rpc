@@ -6,6 +6,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::min;
+use tracing::info;
 
 pub enum CacheStatus {
     Cached { key: String, value: CacheValue },
@@ -60,16 +61,27 @@ impl CacheValue {
         // if a previous entry existed then check if the response has changed
         // else this is a new entry and nothing to do
         if let Some(expired_value) = expired_value {
-            let is_new = expired_value.data == self.data;
+            let is_new = expired_value.data != self.data;
             self.last_modified = Local::now().timestamp();
 
             // if the value has changed then reset the reorg ttl
             // else we can exponentially backoff the reorg_ttl
+            // but only exponential backoff if we hit the reorg_ttl
+            // and not the rpc ttl
             self.reorg_ttl = if is_new {
                 reorg_ttl
             } else {
-                self.reorg_ttl * 2
+                let now = Local::now().timestamp();
+                let age: u64 = (now - expired_value.last_modified) as u64;
+                if age > expired_value.reorg_ttl as u64 {
+                    expired_value.reorg_ttl * 2
+                } else {
+                    reorg_ttl
+                }
             };
+            info!("self.reorg_ttl: {}", self.reorg_ttl)
+        } else {
+            self.reorg_ttl = reorg_ttl
         }
 
         self

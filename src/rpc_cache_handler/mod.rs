@@ -7,6 +7,7 @@ mod debug_trace_block_by_hash;
 mod debug_trace_block_by_number;
 mod debug_trace_call;
 mod debug_trace_transaction;
+mod eth_block_number;
 mod eth_call;
 mod eth_chainid;
 mod eth_estimate_gas;
@@ -73,5 +74,6 @@ pub fn factories() -> Vec<RpcCacheHandlerFactory> {
         get_factory::<eth_get_transaction_count::Handler>(),
         get_factory::<eth_get_transaction_receipt::Handler>(),
         get_factory::<eth_max_priority_fee_per_gas::Handler>(),
+        get_factory::<eth_block_number::Handler>(),
     ]
 }

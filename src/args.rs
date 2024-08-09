@@ -17,7 +17,7 @@ pub struct Args {
     #[arg(short, long, default_value = "100000")]
     pub lru_max_items: usize,
 
-    #[arg(short, long, default_value = "12")]
+    #[arg(long, default_value = "12")]
     pub reorg_ttl: u32,
 
     #[arg(short, long = "cache", default_value = "lru", value_parser = cache_backend_parser)]

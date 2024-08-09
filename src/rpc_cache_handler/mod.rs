@@ -11,6 +11,7 @@ mod eth_block_number;
 mod eth_call;
 mod eth_chainid;
 mod eth_estimate_gas;
+mod eth_gas_price;
 mod eth_get_balance;
 mod eth_get_block_by_hash;
 mod eth_get_block_by_number;
@@ -75,5 +76,6 @@ pub fn factories() -> Vec<RpcCacheHandlerFactory> {
         get_factory::<eth_get_transaction_receipt::Handler>(),
         get_factory::<eth_max_priority_fee_per_gas::Handler>(),
         get_factory::<eth_block_number::Handler>(),
+        get_factory::<eth_gas_price::Handler>(),
     ]
 }

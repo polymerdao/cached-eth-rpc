@@ -6,7 +6,6 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::min;
-use tracing::info;
 
 pub enum CacheStatus {
     Cached { key: String, value: CacheValue },
@@ -79,7 +78,6 @@ impl CacheValue {
                     reorg_ttl
                 }
             };
-            info!("self.reorg_ttl: {}", self.reorg_ttl)
         } else {
             self.reorg_ttl = reorg_ttl
         }

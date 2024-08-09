@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
+use crate::cache::CacheValue;
 use alloy_primitives::{Address, B256, U64};
 use anyhow::{bail, Context};
-use chrono::Local;
 use serde_json::Value;
 use sha1::Digest;
 
@@ -49,10 +49,12 @@ pub fn extract_address_cache_key(params: &Value) -> anyhow::Result<Option<String
     Ok(Some(format!("{block_tag}-{lowercase_address}")))
 }
 
-pub fn extract_transaction_cache_value(result: &Value) -> anyhow::Result<(bool, String)> {
-    let can_cache = result.is_object() && !result["blockHash"].is_null();
-
-    Ok((can_cache, serde_json::to_string(result)?))
+pub fn extract_transaction_cache_value(
+    result: Value,
+    ttl: u32,
+) -> anyhow::Result<(bool, CacheValue)> {
+    let is_cacheable = result.is_object() && !result["blockHash"].is_null();
+    Ok((is_cacheable, CacheValue::new(result, 0, ttl)))
 }
 
 pub fn extract_and_format_block_number(value: &Value) -> anyhow::Result<Option<String>> {
@@ -99,13 +101,6 @@ pub fn hash_string(s: &str) -> String {
     let result = hasher.finalize();
 
     hex::encode(result.as_slice())
-}
-
-pub fn compute_cache_bucket(ttl: i64) -> i64 {
-    let now = Local::now();
-    let ts = now.timestamp();
-    let bucket = ts - ts % ttl;
-    bucket
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@ use alloy_primitives::B256;
 use anyhow::Context;
 use serde_json::Value;
 
+use crate::cache::CacheValue;
 use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
 #[derive(Default, Clone)]
@@ -20,8 +21,8 @@ impl RpcCacheHandler for Handler {
         Ok(Some(format!("{tx_hash:#x}")))
     }
 
-    fn extract_cache_value(&self, result: &Value) -> anyhow::Result<(bool, String)> {
-        common::extract_transaction_cache_value(result)
+    fn extract_cache_value(&self, result: Value) -> anyhow::Result<(bool, CacheValue)> {
+        common::extract_transaction_cache_value(result, self.get_ttl())
     }
 }
 

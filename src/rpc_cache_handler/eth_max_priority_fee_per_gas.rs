@@ -1,4 +1,4 @@
-use crate::rpc_cache_handler::{common, RpcCacheHandler};
+use crate::rpc_cache_handler::RpcCacheHandler;
 use serde_json::Value;
 
 #[derive(Default, Clone)]
@@ -10,7 +10,10 @@ impl RpcCacheHandler for Handler {
     }
 
     fn extract_cache_key(&self, _: &Value) -> anyhow::Result<Option<String>> {
-        let bucket = common::compute_cache_bucket(2);
-        Ok(Some(format!("eth_maxPriorityFeePerGas-{bucket}")))
+        Ok(Some(format!("eth_maxPriorityFeePerGas")))
+    }
+
+    fn get_ttl(&self) -> u32 {
+        0
     }
 }

@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use crate::args::Args;
 use crate::cache::redis_backend::RedisBackendFactory;
-use crate::cache::CacheStatus;
+use crate::cache::{CacheStatus, CacheValue};
 use crate::json_rpc::{DefinedError, JsonRpcRequest, JsonRpcResponse, RequestId};
 use crate::rpc_cache_handler::RpcCacheHandler;
 
@@ -40,7 +40,7 @@ async fn rpc_call(
     };
 
     let mut ordered_requests_result: Vec<Option<JsonRpcResponse>> = vec![None; requests.len()];
-    let mut uncached_requests = vec![];
+    let mut uncached_requests: Vec<(RpcRequest, Option<CacheValue>)> = vec![];
     let mut request_id_index_map: HashMap<RequestId, usize> = HashMap::new();
 
     // Scope the redis connection
@@ -76,21 +76,28 @@ async fn rpc_call(
                 () => {{
                     let rpc_request = RpcRequest::new_uncachable(index, id, method, params);
                     request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
-                    uncached_requests.push(rpc_request);
+                    uncached_requests.push((rpc_request, None));
                     continue;
                 }};
 
                 ($key: expr) => {{
                     let rpc_request = RpcRequest::new(index, id, method, params, $key);
                     request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
-                    uncached_requests.push(rpc_request);
+                    uncached_requests.push((rpc_request, None));
+                    continue;
+                }};
+
+                ($key: expr, $val: expr) => {{
+                    let rpc_request = RpcRequest::new(index, id, method, params, $key);
+                    request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
+                    uncached_requests.push((rpc_request, Some($val)));
                     continue;
                 }};
             }
 
             // retrieve the handler for the requested method
-            let cache_entry = match chain_state.cache_entries.get(&method) {
-                Some(cache_entry) => cache_entry,
+            let handler = match chain_state.handlers.get(&method) {
+                Some(handler) => handler,
                 None => {
                     tracing::warn!(method, "cache is not supported");
                     push_uncached_request_and_continue!()
@@ -98,7 +105,7 @@ async fn rpc_call(
             };
 
             // get the cache key from the handler based on the request params
-            let params_key = match cache_entry.handler.extract_cache_key(&params) {
+            let params_key = match handler.extract_cache_key(&params) {
                 Ok(Some(params_key)) => params_key,
                 Ok(None) => push_uncached_request_and_continue!(),
                 Err(err) => {
@@ -114,8 +121,14 @@ async fn rpc_call(
             // read results from cache
             match cache_backend.read(&method, &params_key) {
                 Ok(CacheStatus::Cached { key, value }) => {
-                    tracing::info!("cache hit for method {} with key {}", method, key);
-                    ordered_requests_result[index] = Some(JsonRpcResponse::from_result(id, value));
+                    if !value.is_expired() {
+                        tracing::info!("cache hit for method {} with key {}", method, key);
+                        ordered_requests_result[index] =
+                            Some(JsonRpcResponse::from_result(id, value.data));
+                    } else {
+                        tracing::info!("cache expired for method {} with key {}", method, key);
+                        push_uncached_request_and_continue!(key, value);
+                    }
                 }
                 Ok(CacheStatus::Missed { key }) => {
                     tracing::info!("cache missed for method {} with key {}", method, key);
@@ -156,7 +169,7 @@ async fn rpc_call(
         Err(err) => {
             tracing::error!("fail to make rpc request because: {}", err);
 
-            for rpc_request in uncached_requests {
+            for (rpc_request, _) in uncached_requests {
                 ordered_requests_result[rpc_request.index] = Some(JsonRpcResponse::from_error(
                     Some(rpc_request.id),
                     DefinedError::InternalError(Some(json!({
@@ -179,7 +192,7 @@ async fn rpc_call(
                 rpc_result.to_string()
             );
 
-            for rpc_request in uncached_requests {
+            for (rpc_request, _) in uncached_requests {
                 ordered_requests_result[rpc_request.index] = Some(JsonRpcResponse::from_error(
                     Some(rpc_request.id),
                     DefinedError::InternalError(Some(json!({
@@ -209,7 +222,7 @@ async fn rpc_call(
         Err(err) => {
             tracing::error!("fail to get cache backend because: {}", err);
 
-            for rpc_request in uncached_requests {
+            for (rpc_request, _) in uncached_requests {
                 ordered_requests_result[rpc_request.index] = Some(JsonRpcResponse::from_error(
                     Some(rpc_request.id),
                     DefinedError::InternalError(Some(json!({
@@ -228,7 +241,7 @@ async fn rpc_call(
     // else assign the response and extract the cache key for insertion
     // into the cache backend.
     for (index, mut response) in result_values.into_iter().enumerate() {
-        let rpc_request = match RequestId::try_from(response["id"].clone()) {
+        let (rpc_request, cache_value) = match RequestId::try_from(response["id"].clone()) {
             Ok(id) if request_id_index_map.get(&id).is_some() => {
                 &uncached_requests[*request_id_index_map.get(&id).unwrap()]
             }
@@ -266,9 +279,9 @@ async fn rpc_call(
 
         // It's safe to unwrap here because if the cache system doesn't support this method, we have already
         // made the early return.
-        let cache_entry = chain_state.cache_entries.get(&rpc_request.method).unwrap();
+        let handler = chain_state.handlers.get(&rpc_request.method).unwrap();
 
-        let (can_cache, extracted_value) = match cache_entry.handler.extract_cache_value(&result) {
+        let (is_cacheable, extracted_value) = match handler.extract_cache_value(result) {
             Ok(v) => v,
             Err(err) => {
                 tracing::error!("fail to extract cache value because: {}", err);
@@ -285,8 +298,8 @@ async fn rpc_call(
             }
         };
 
-        if can_cache {
-            let _ = cache_backend.write(&cache_key, &extracted_value.to_string());
+        if is_cacheable {
+            let _ = cache_backend.write(cache_key.as_str(), extracted_value, cache_value);
         }
     }
 
@@ -334,15 +347,16 @@ async fn main() -> std::io::Result<()> {
 
         let mut chain_state = ChainState {
             rpc_url: rpc_url.clone(),
-            cache_entries: Default::default(),
+            handlers: Default::default(),
             cache_factory,
         };
 
         for factory in &handler_factories {
             let handler = factory();
-            chain_state
-                .cache_entries
-                .insert(handler.method_name().to_string(), CacheEntry { handler });
+            chain_state.handlers.insert(
+                handler.method_name().to_string(),
+                HandlerEntry { inner: handler },
+            );
         }
 
         app_state.chains.insert(name.to_string(), chain_state);
@@ -383,7 +397,7 @@ fn new_cache_backend_factory(
                     .test_on_check_out(false)
                     .build(client)
                     .context("fail to create redis connection pool")?;
-                let factory = RedisBackendFactory::new(chain_id, conn_pool);
+                let factory = RedisBackendFactory::new(chain_id, conn_pool, args.reorg_ttl);
 
                 Box::new(factory)
             }
@@ -395,11 +409,14 @@ fn new_cache_backend_factory(
         },
         "memory" => {
             tracing::info!("Using in memory cache backend");
-            Box::new(memory_backend::MemoryBackendFactory::new())
+            Box::new(memory_backend::MemoryBackendFactory::new(args.reorg_ttl))
         }
         "lru" => {
             tracing::info!("Using in LRU cache backend");
-            Box::new(lru_backend::LruBackendFactory::new(args.lru_max_items))
+            Box::new(lru_backend::LruBackendFactory::new(
+                args.lru_max_items,
+                args.reorg_ttl,
+            ))
         }
         _ => {
             return Err(anyhow::anyhow!(
@@ -415,11 +432,21 @@ fn new_cache_backend_factory(
 struct ChainState {
     rpc_url: Url,
     cache_factory: Box<dyn CacheBackendFactory>,
-    cache_entries: HashMap<String, CacheEntry>,
+    handlers: HashMap<String, HandlerEntry>,
 }
 
-struct CacheEntry {
-    handler: Box<dyn RpcCacheHandler>,
+struct HandlerEntry {
+    inner: Box<dyn RpcCacheHandler>,
+}
+
+impl HandlerEntry {
+    fn extract_cache_key(&self, params: &Value) -> anyhow::Result<Option<String>> {
+        self.inner.extract_cache_key(params)
+    }
+
+    fn extract_cache_value(&self, result: Value) -> anyhow::Result<(bool, CacheValue)> {
+        self.inner.extract_cache_value(result)
+    }
 }
 
 struct AppState {

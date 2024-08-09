@@ -1,17 +1,22 @@
 use anyhow::Context;
 use redis::Commands;
-use serde_json::{from_str, Value};
+use serde_json::from_str;
 
-use super::{CacheBackend, CacheBackendFactory, CacheStatus};
+use super::{CacheBackend, CacheBackendFactory, CacheStatus, CacheValue};
 
 pub struct RedisBackendFactory {
     chain_id: u64,
     client: r2d2::Pool<redis::Client>,
+    reorg_ttl: u32,
 }
 
 impl RedisBackendFactory {
-    pub fn new(chain_id: u64, client: r2d2::Pool<redis::Client>) -> Self {
-        Self { chain_id, client }
+    pub fn new(chain_id: u64, client: r2d2::Pool<redis::Client>, reorg_ttl: u32) -> Self {
+        Self {
+            chain_id,
+            client,
+            reorg_ttl,
+        }
     }
 }
 
@@ -20,6 +25,7 @@ impl CacheBackendFactory for RedisBackendFactory {
         Ok(Box::new(RedisBackend {
             chain_id: self.chain_id,
             conn: self.client.get()?,
+            reorg_ttl: self.reorg_ttl,
         }))
     }
 }
@@ -27,6 +33,7 @@ impl CacheBackendFactory for RedisBackendFactory {
 pub struct RedisBackend {
     chain_id: u64,
     conn: r2d2::PooledConnection<redis::Client>,
+    reorg_ttl: u32,
 }
 
 impl CacheBackend for RedisBackend {
@@ -36,7 +43,8 @@ impl CacheBackend for RedisBackend {
 
         let v = match value {
             Some(value) => {
-                let value = from_str::<Value>(&value).context("fail to deserialize cache value")?;
+                let value =
+                    from_str::<CacheValue>(&value).context("fail to deserialize cache value")?;
                 CacheStatus::Cached {
                     key: cache_key,
                     value,
@@ -48,8 +56,14 @@ impl CacheBackend for RedisBackend {
         Ok(v)
     }
 
-    fn write(&mut self, key: &str, value: &str) -> anyhow::Result<()> {
-        let _ = self.conn.set::<_, _, String>(key, value);
+    fn write(
+        &mut self,
+        key: &str,
+        cache_value: CacheValue,
+        expired_value: &Option<CacheValue>,
+    ) -> anyhow::Result<()> {
+        let cache_value = cache_value.update(expired_value, self.reorg_ttl);
+        let _ = self.conn.set::<_, _, String>(key, cache_value.to_string()?);
         Ok(())
     }
 }

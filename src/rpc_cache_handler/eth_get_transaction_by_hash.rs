@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::cache::CacheValue;
 use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
 #[derive(Default, Clone)]
@@ -16,7 +17,7 @@ impl RpcCacheHandler for Handler {
         self.inner.extract_cache_key(params)
     }
 
-    fn extract_cache_value(&self, result: &Value) -> anyhow::Result<(bool, String)> {
-        common::extract_transaction_cache_value(result)
+    fn extract_cache_value(&self, result: Value) -> anyhow::Result<(bool, CacheValue)> {
+        common::extract_transaction_cache_value(result, self.get_ttl())
     }
 }

@@ -1,3 +1,4 @@
+use crate::cache::CacheValue;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -28,8 +29,16 @@ pub trait RpcCacheHandler: Send + Sync {
 
     fn extract_cache_key(&self, params: &Value) -> Result<Option<String>>;
 
-    fn extract_cache_value(&self, result: &Value) -> Result<(bool, String)> {
-        Ok((!result.is_null(), serde_json::to_string(result)?))
+    fn extract_cache_value(&self, result: Value) -> Result<(bool, CacheValue)> {
+        // reorg_ttl is managed by cache backend
+        Ok((
+            !result.is_null(),
+            CacheValue::new(result, 0, self.get_ttl()),
+        ))
+    }
+
+    fn get_ttl(&self) -> u32 {
+        0
     }
 }
 

@@ -1,8 +1,8 @@
+use crate::cache::CacheValue;
+use crate::rpc_cache_handler::{common, RpcCacheHandler};
 use alloy_primitives::U64;
 use anyhow::Context;
 use serde_json::Value;
-
-use crate::rpc_cache_handler::{common, RpcCacheHandler};
 
 #[derive(Default, Clone)]
 pub struct Handler;
@@ -23,8 +23,8 @@ impl RpcCacheHandler for Handler {
         Ok(Some(format!("{block_hash}-{tx_index}")))
     }
 
-    fn extract_cache_value(&self, result: &Value) -> anyhow::Result<(bool, String)> {
-        common::extract_transaction_cache_value(result)
+    fn extract_cache_value(&self, result: Value) -> anyhow::Result<(bool, CacheValue)> {
+        common::extract_transaction_cache_value(result, self.get_ttl())
     }
 }
 

@@ -17,6 +17,7 @@ use crate::rpc_cache_handler::RpcCacheHandler;
 
 use lazy_static::lazy_static;
 use prometheus::{register_counter, Counter, Encoder, TextEncoder};
+use tracing::debug;
 
 mod args;
 mod cache;
@@ -148,6 +149,7 @@ async fn rpc_call(
             };
 
             // get the cache key from the handler based on the request params
+            debug!("params: {:?}", params);
             let params_key = match handler.extract_cache_key(&params) {
                 Ok(Some(params_key)) => params_key,
                 Ok(None) => push_uncached_request_and_continue!(),

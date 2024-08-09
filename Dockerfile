@@ -1,4 +1,4 @@
-FROM rust:alpine3.20 as builder
+FROM rust:alpine3.20 AS builder
 
 # Install build dependencies
 RUN apk update && apk add --no-cache \

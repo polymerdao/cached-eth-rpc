@@ -156,11 +156,13 @@ async fn rpc_call(
         return_response!();
     }
 
+    let rpc_requests: Vec<RpcRequest> = uncached_requests.into_iter().map(|(req, _)| req).collect();
+
     // prepare rpc and return the result future
     let rpc_result = utils::do_rpc_request(
         &data.http_client,
         chain_state.rpc_url.clone(),
-        &uncached_requests,
+        &rpc_requests,
     );
 
     // await the rpc response, for each cache miss record the response

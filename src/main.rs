@@ -25,17 +25,22 @@ mod rpc_cache_handler;
 mod utils;
 
 lazy_static! {
-    static ref CACHE_HITS: Counter =
-        register_counter!("cache_hits_total", "Total number of cache HITs").unwrap();
-    static ref CACHE_MISSES: Counter =
-        register_counter!("cache_misses_total", "Total number of cache MISSs").unwrap();
-    static ref CACHE_UNCACHEABLE: Counter = register_counter!(
-        "cache_uncacheable_total",
-        "Total number of UNCACHEABLE requests"
+    static ref CACHE_HIT: Counter =
+        register_counter!("cache_hit_total", "Total number of cache hits.").unwrap();
+    static ref CACHE_MISS: Counter =
+        register_counter!("cache_miss_total", "Total number of cache misses.").unwrap();
+    static ref CACHE_EXPIRED_MISS: Counter = register_counter!(
+        "cache_expired_miss_total",
+        "Total number of cache misses due to expiration"
     )
     .unwrap();
-    static ref CACHE_ERROR: Counter =
-        register_counter!("cache_errors_total", "Total number of cache ERRORs").unwrap();
+    static ref CACHE_UNCACHEABLE: Counter = register_counter!(
+        "cache_uncacheable_total",
+        "Total number of uncacheable requests."
+    )
+    .unwrap();
+    static ref ERROR: Counter =
+        register_counter!("errors_total", "Total number of errors.").unwrap();
 }
 
 // Health check handler
@@ -152,7 +157,7 @@ async fn rpc_call(
                         params = format_args!("{}", params),
                         "fail to extract cache key: {err:#}",
                     );
-                    CACHE_ERROR.inc();
+                    ERROR.inc();
                     push_uncached_request_and_continue!();
                 }
             };
@@ -161,23 +166,24 @@ async fn rpc_call(
             match cache_backend.read(&method, &params_key) {
                 Ok(CacheStatus::Cached { key, value }) => {
                     if !value.is_expired() {
-                        CACHE_HITS.inc();
+                        CACHE_HIT.inc();
                         tracing::info!("cache hit for method {} with key {}", method, key);
                         ordered_requests_result[index] =
                             Some(JsonRpcResponse::from_result(id, value.data));
                     } else {
-                        CACHE_MISSES.inc();
+                        CACHE_MISS.inc();
+                        CACHE_EXPIRED_MISS.inc();
                         tracing::info!("cache expired for method {} with key {}", method, key);
                         push_uncached_request_and_continue!(key, value);
                     }
                 }
                 Ok(CacheStatus::Missed { key }) => {
-                    CACHE_MISSES.inc();
+                    CACHE_MISS.inc();
                     tracing::info!("cache missed for method {} with key {}", method, key);
                     push_uncached_request_and_continue!(key);
                 }
                 Err(err) => {
-                    CACHE_ERROR.inc();
+                    ERROR.inc();
                     tracing::error!("fail to read cache because: {err:#}");
                     push_uncached_request_and_continue!();
                 }
@@ -215,6 +221,7 @@ async fn rpc_call(
     let rpc_result = match rpc_result.await {
         Ok(v) => v,
         Err(err) => {
+            ERROR.inc();
             tracing::error!("fail to make rpc request because: {}", err);
 
             for (rpc_request, _) in uncached_requests {
@@ -235,6 +242,7 @@ async fn rpc_call(
     let result_values = match rpc_result {
         Value::Array(v) => v,
         _ => {
+            ERROR.inc();
             tracing::error!(
                 "array is expected but we got invalid rpc response: {},",
                 rpc_result.to_string()
@@ -257,6 +265,7 @@ async fn rpc_call(
 
     // ensure we got the expected number of responses
     if result_values.len() != uncached_requests.len() {
+        ERROR.inc();
         tracing::warn!(
             "rpc response length mismatch, expected: {}, got: {}",
             uncached_requests.len(),
@@ -268,6 +277,7 @@ async fn rpc_call(
     let mut cache_backend = match chain_state.cache_factory.get_instance() {
         Ok(v) => v,
         Err(err) => {
+            ERROR.inc();
             tracing::error!("fail to get cache backend because: {}", err);
 
             for (rpc_request, _) in uncached_requests {
@@ -295,6 +305,7 @@ async fn rpc_call(
             }
             _ => {
                 if index >= uncached_requests.len() {
+                    ERROR.inc();
                     tracing::warn!("rpc response has invalid id and fail to map to original request. response is ignored, response: {response}");
                     continue;
                 }
@@ -309,6 +320,7 @@ async fn rpc_call(
         match response["error"].take() {
             Value::Null => {}
             error => {
+                ERROR.inc();
                 let response =
                     JsonRpcResponse::from_custom_error(Some(rpc_request.id.clone()), error);
                 ordered_requests_result[rpc_request.index] = Some(response);
@@ -332,6 +344,7 @@ async fn rpc_call(
         let (is_cacheable, extracted_value) = match handler.extract_cache_value(result) {
             Ok(v) => v,
             Err(err) => {
+                ERROR.inc();
                 tracing::error!("fail to extract cache value because: {}", err);
 
                 ordered_requests_result[rpc_request.index] = Some(JsonRpcResponse::from_error(

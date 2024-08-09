@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "cached-eth-rpc"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "actix-web",
  "alloy-primitives",

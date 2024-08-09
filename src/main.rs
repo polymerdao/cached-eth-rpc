@@ -156,7 +156,10 @@ async fn rpc_call(
         return_response!();
     }
 
-    let rpc_requests: Vec<RpcRequest> = uncached_requests.into_iter().map(|(req, _)| req).collect();
+    let rpc_requests: Vec<RpcRequest> = uncached_requests
+        .iter()
+        .map(|(req, _)| req.clone())
+        .collect();
 
     // prepare rpc and return the result future
     let rpc_result = utils::do_rpc_request(

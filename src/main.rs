@@ -15,12 +15,49 @@ use crate::cache::{CacheStatus, CacheValue};
 use crate::json_rpc::{DefinedError, JsonRpcRequest, JsonRpcResponse, RequestId};
 use crate::rpc_cache_handler::RpcCacheHandler;
 
+use lazy_static::lazy_static;
+use prometheus::{register_counter, Counter, Encoder, TextEncoder};
+
 mod args;
 mod cache;
 mod json_rpc;
 mod rpc_cache_handler;
 mod utils;
 
+lazy_static! {
+    static ref CACHE_HITS: Counter =
+        register_counter!("cache_hits_total", "Total number of cache HITs").unwrap();
+    static ref CACHE_MISSES: Counter =
+        register_counter!("cache_misses_total", "Total number of cache MISSs").unwrap();
+    static ref CACHE_UNCACHEABLE: Counter = register_counter!(
+        "cache_uncacheable_total",
+        "Total number of UNCACHEABLE requests"
+    )
+    .unwrap();
+    static ref CACHE_ERROR: Counter =
+        register_counter!("cache_errors_total", "Total number of cache ERRORs").unwrap();
+}
+
+// Health check handler
+#[actix_web::get("/health")]
+async fn health_check() -> Result<HttpResponse, Error> {
+    Ok(HttpResponse::Ok().body("OK"))
+}
+
+// Metrics handler
+#[actix_web::get("/metrics")]
+async fn metrics() -> Result<HttpResponse, Error> {
+    let encoder = TextEncoder::new();
+    let metric_families = prometheus::gather();
+    let mut buffer = Vec::new();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+
+    Ok(HttpResponse::Ok()
+        .content_type("text/plain; charset=utf-8")
+        .body(buffer))
+}
+
+// RPC handler
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
     path: web::Path<(String,)>,
@@ -99,6 +136,7 @@ async fn rpc_call(
             let handler = match chain_state.handlers.get(&method) {
                 Some(handler) => handler,
                 None => {
+                    CACHE_UNCACHEABLE.inc();
                     tracing::warn!(method, "cache is not supported");
                     push_uncached_request_and_continue!()
                 }
@@ -114,6 +152,7 @@ async fn rpc_call(
                         params = format_args!("{}", params),
                         "fail to extract cache key: {err:#}",
                     );
+                    CACHE_ERROR.inc();
                     push_uncached_request_and_continue!();
                 }
             };
@@ -122,19 +161,23 @@ async fn rpc_call(
             match cache_backend.read(&method, &params_key) {
                 Ok(CacheStatus::Cached { key, value }) => {
                     if !value.is_expired() {
+                        CACHE_HITS.inc();
                         tracing::info!("cache hit for method {} with key {}", method, key);
                         ordered_requests_result[index] =
                             Some(JsonRpcResponse::from_result(id, value.data));
                     } else {
+                        CACHE_MISSES.inc();
                         tracing::info!("cache expired for method {} with key {}", method, key);
                         push_uncached_request_and_continue!(key, value);
                     }
                 }
                 Ok(CacheStatus::Missed { key }) => {
+                    CACHE_MISSES.inc();
                     tracing::info!("cache missed for method {} with key {}", method, key);
                     push_uncached_request_and_continue!(key);
                 }
                 Err(err) => {
+                    CACHE_ERROR.inc();
                     tracing::error!("fail to read cache because: {err:#}");
                     push_uncached_request_and_continue!();
                 }
@@ -374,10 +417,16 @@ async fn main() -> std::io::Result<()> {
     {
         let app_state = app_state.clone();
 
-        HttpServer::new(move || App::new().service(rpc_call).app_data(app_state.clone()))
-            .bind((args.bind, args.port))?
-            .run()
-            .await?;
+        HttpServer::new(move || {
+            App::new()
+                .app_data(app_state.clone())
+                .service(rpc_call)
+                .service(metrics)
+                .service(health_check)
+        })
+        .bind((args.bind, args.port))?
+        .run()
+        .await?;
     }
 
     tracing::info!("Server stopped");

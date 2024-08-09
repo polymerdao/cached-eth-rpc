@@ -30,6 +30,8 @@ impl RpcCacheHandler for Handler {
         if let Some(block_hash) = filter["blockHash"].as_str() {
             if let Ok(block_hash) = B256::from_str(block_hash) {
                 block_tag = Some(format!("{:#x}", block_hash));
+            } else {
+                bail!("expect a valid block hash");
             }
         }
 

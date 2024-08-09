@@ -11,7 +11,8 @@ if [ -z "$ETH_SEPOLIA_RPC" ] || [ -z "$OP_SEPOLIA_RPC" ] || [ -z "$BASE_SEPOLIA_
 fi
 
 # Run the cached-eth-rpc command with environment variables
-exec /app/cached-eth-rpc --bind 0.0.0.0 --port 8080 \
+exec /app/cached-eth-rpc \
   --endpoint=eth-sepolia="$ETH_SEPOLIA_RPC" \
   --endpoint=op-sepolia="$OP_SEPOLIA_RPC" \
-  --endpoint=base-sepolia="$BASE_SEPOLIA_RPC"
+  --endpoint=base-sepolia="$BASE_SEPOLIA_RPC" \
+ "$@"

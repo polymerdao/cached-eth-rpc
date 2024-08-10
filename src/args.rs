@@ -17,7 +17,11 @@ pub struct Args {
     #[arg(short, long, default_value = "100000")]
     pub lru_max_items: usize,
 
-    #[arg(long, default_value = "12")]
+    #[arg(
+        long,
+        default_value = "12",
+        help = "Global TTL to account for reorgs. Setting to zero disables caching."
+    )]
     pub reorg_ttl: u32,
 
     #[arg(short, long = "cache", default_value = "lru", value_parser = cache_backend_parser)]
@@ -26,7 +30,7 @@ pub struct Args {
     #[arg(
         short,
         long,
-        help = "Redis URL. If not suppiled, in memory cache backend will be used."
+        help = "Redis URL. If not suppiled, in memory cache backend will be used (example: redis://localhost:6379)."
     )]
     pub redis_url: Option<String>,
 }

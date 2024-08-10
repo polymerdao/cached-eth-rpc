@@ -311,23 +311,24 @@ async fn rpc_call(
         // made the early return.
         let handler = chain_state.handlers.get(&rpc_request.method).unwrap();
 
-        let (is_cacheable, extracted_value) = match handler.extract_cache_value(result) {
-            Ok(v) => v,
-            Err(err) => {
-                metrics.error_counter.inc();
-                tracing::error!("fail to extract cache value because: {}", err);
+        let (is_cacheable, extracted_value) =
+            match handler.extract_cache_value(result, cache_backend.get_reorg_ttl()) {
+                Ok(v) => v,
+                Err(err) => {
+                    metrics.error_counter.inc();
+                    tracing::error!("fail to extract cache value because: {}", err);
 
-                ordered_requests_result[rpc_request.index] = Some(JsonRpcResponse::from_error(
-                    Some(rpc_request.id.clone()),
-                    DefinedError::InternalError(Some(json!({
-                        "error": "fail to extract cache value",
-                        "reason": err.to_string(),
-                    }))),
-                ));
+                    ordered_requests_result[rpc_request.index] = Some(JsonRpcResponse::from_error(
+                        Some(rpc_request.id.clone()),
+                        DefinedError::InternalError(Some(json!({
+                            "error": "fail to extract cache value",
+                            "reason": err.to_string(),
+                        }))),
+                    ));
 
-                continue;
-            }
-        };
+                    continue;
+                }
+            };
 
         if is_cacheable {
             let _ = cache_backend.write(cache_key.as_str(), extracted_value, cache_value);
@@ -482,8 +483,12 @@ impl HandlerEntry {
         self.inner.extract_cache_key(params)
     }
 
-    fn extract_cache_value(&self, result: Value) -> anyhow::Result<(bool, CacheValue)> {
-        self.inner.extract_cache_value(result)
+    fn extract_cache_value(
+        &self,
+        result: Value,
+        reorg_ttl: u32,
+    ) -> anyhow::Result<(bool, CacheValue)> {
+        self.inner.extract_cache_value(result, reorg_ttl)
     }
 }
 

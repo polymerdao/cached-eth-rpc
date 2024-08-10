@@ -51,10 +51,11 @@ pub fn extract_address_cache_key(params: &Value) -> anyhow::Result<Option<String
 
 pub fn extract_transaction_cache_value(
     result: Value,
+    reorg_ttl: u32,
     ttl: u32,
 ) -> anyhow::Result<(bool, CacheValue)> {
     let is_cacheable = result.is_object() && !result["blockHash"].is_null();
-    Ok((is_cacheable, CacheValue::new(result, 0, ttl)))
+    Ok((is_cacheable, CacheValue::new(result, reorg_ttl, ttl)))
 }
 
 pub fn extract_and_format_block_number(value: &Value) -> anyhow::Result<Option<String>> {

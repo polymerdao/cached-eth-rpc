@@ -35,6 +35,10 @@ pub struct MemoryBackend {
 }
 
 impl CacheBackend for MemoryBackend {
+    fn get_reorg_ttl(&self) -> u32 {
+        self.reorg_ttl
+    }
+
     fn read(&mut self, method: &str, params_key: &str) -> anyhow::Result<CacheStatus> {
         let key = format!("{method}:{params_key}");
 

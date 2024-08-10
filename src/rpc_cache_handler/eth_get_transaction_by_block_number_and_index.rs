@@ -29,8 +29,12 @@ impl RpcCacheHandler for Handler {
         Ok(Some(format!("{block_number}-{tx_index}")))
     }
 
-    fn extract_cache_value(&self, result: Value) -> anyhow::Result<(bool, CacheValue)> {
-        common::extract_transaction_cache_value(result, self.get_ttl())
+    fn extract_cache_value(
+        &self,
+        result: Value,
+        reorg_ttl: u32,
+    ) -> anyhow::Result<(bool, CacheValue)> {
+        common::extract_transaction_cache_value(result, reorg_ttl, self.get_ttl())
     }
 }
 

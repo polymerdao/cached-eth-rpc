@@ -5,8 +5,6 @@ pub mod redis_backend;
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::cmp::min;
-use tracing::info;
 
 pub enum CacheStatus {
     Cached { key: String, value: CacheValue },
@@ -42,7 +40,7 @@ impl CacheValue {
     }
 
     pub fn effective_ttl(&self) -> u32 {
-        min(self.reorg_ttl, self.ttl)
+        std::cmp::min(self.reorg_ttl, self.ttl)
     }
 
     pub fn update(mut self, expired_value: &Option<Self>, reorg_ttl: u32) -> Self {

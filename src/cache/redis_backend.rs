@@ -37,6 +37,10 @@ pub struct RedisBackend {
 }
 
 impl CacheBackend for RedisBackend {
+    fn get_reorg_ttl(&self) -> u32 {
+        self.reorg_ttl
+    }
+
     fn read(&mut self, method: &str, params_key: &str) -> anyhow::Result<CacheStatus> {
         let cache_key = format!("{}:{method}:{params_key}", self.chain_id);
         let value: Option<String> = self.conn.get(&cache_key)?;
@@ -63,7 +67,10 @@ impl CacheBackend for RedisBackend {
         expired_value: &Option<CacheValue>,
     ) -> anyhow::Result<()> {
         let cache_value = cache_value.update(expired_value, self.reorg_ttl);
-        let _ = self.conn.set::<_, _, String>(key, cache_value.to_string()?);
+        let redis_ttl = cache_value.effective_ttl() * 2;
+        let _ = self
+            .conn
+            .set_ex::<_, _, String>(key, cache_value.to_string()?, redis_ttl.into());
         Ok(())
     }
 }

@@ -31,16 +31,17 @@ pub trait RpcCacheHandler: Send + Sync {
 
     fn extract_cache_key(&self, params: &Value) -> Result<Option<String>>;
 
-    fn extract_cache_value(&self, result: Value) -> Result<(bool, CacheValue)> {
+    fn extract_cache_value(&self, result: Value, reorg_ttl: u32) -> Result<(bool, CacheValue)> {
         // reorg_ttl is managed by cache backend
         Ok((
             !result.is_null(),
-            CacheValue::new(result, 0, self.get_ttl()),
+            CacheValue::new(result, reorg_ttl, self.get_ttl()),
         ))
     }
 
+    // default ttl is 1 day
     fn get_ttl(&self) -> u32 {
-        0
+        86400
     }
 }
 

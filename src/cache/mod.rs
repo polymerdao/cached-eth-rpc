@@ -6,6 +6,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::min;
+use tracing::info;
 
 pub enum CacheStatus {
     Cached { key: String, value: CacheValue },
@@ -23,6 +24,7 @@ pub struct CacheValue {
 impl CacheValue {
     pub fn new(data: Value, reorg_ttl: u32, ttl: u32) -> Self {
         let last_modified = Local::now().timestamp();
+        let reorg_ttl = std::cmp::max(reorg_ttl, 1); // make sure nonzero
         Self {
             data,
             reorg_ttl,
@@ -33,27 +35,14 @@ impl CacheValue {
 
     pub fn is_expired(&self) -> bool {
         let now = Local::now().timestamp();
-
         let last_modified = self.last_modified;
-        let reorg_ttl = self.reorg_ttl;
-        let ttl = self.ttl;
-
-        if last_modified > now {
-            return true;
-        }
-
         let age: u64 = (now - last_modified) as u64;
-        let ttl = if reorg_ttl == 0 && ttl == 0 {
-            0
-        } else if reorg_ttl == 0 && ttl > 0 {
-            ttl
-        } else if reorg_ttl > 0 && ttl == 0 {
-            reorg_ttl
-        } else {
-            min(reorg_ttl, ttl)
-        };
+        let ttl = self.effective_ttl();
+        age > ttl.into()
+    }
 
-        ttl != 0 && age > ttl.into()
+    pub fn effective_ttl(&self) -> u32 {
+        min(self.reorg_ttl, self.ttl)
     }
 
     pub fn update(mut self, expired_value: &Option<Self>, reorg_ttl: u32) -> Self {
@@ -70,8 +59,7 @@ impl CacheValue {
             self.reorg_ttl = if is_new {
                 reorg_ttl
             } else {
-                let now = Local::now().timestamp();
-                let age: u64 = (now - expired_value.last_modified) as u64;
+                let age: u64 = (self.last_modified - expired_value.last_modified) as u64;
                 if age > expired_value.reorg_ttl as u64 {
                     expired_value.reorg_ttl * 2
                 } else {
@@ -99,6 +87,7 @@ pub trait CacheBackendFactory: Send + Sync {
 }
 
 pub trait CacheBackend {
+    fn get_reorg_ttl(&self) -> u32;
     fn read(&mut self, method: &str, params_key: &str) -> anyhow::Result<CacheStatus>;
     fn write(
         &mut self,

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use actix_web::{error, web, App, Error, HttpResponse, HttpServer};
 use anyhow::Context;
@@ -82,6 +82,15 @@ async fn rpc_call(
                     continue;
                 }
             };
+
+            // Check if the method starts with an allowed prefix
+            if !chain_state.allowed_prefixes.iter().any(|prefix| method.starts_with(prefix)) {
+                ordered_requests_result.push(Some(JsonRpcResponse::from_error(
+                    Some(id),
+                    DefinedError::MethodNotFound,
+                )));
+                continue;
+            }
 
             macro_rules! push_uncached_request_and_continue {
                 () => {{
@@ -382,6 +391,7 @@ async fn main() -> std::io::Result<()> {
             rpc_url: rpc_url.clone(),
             handlers: Default::default(),
             cache_factory,
+            allowed_prefixes: vec!["eth_".to_string(), "alchemy_".to_string(), "net_".to_string()],
         };
 
         for factory in &handler_factories {

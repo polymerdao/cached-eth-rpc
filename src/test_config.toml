@@ -1,0 +1,32 @@
+[server]
+port = ${SERVER_PORT}
+host = "${SERVER_HOST}"
+
+[cache_backend]
+cache_type = "redis"       # or lru, memory
+redis_url = "${REDIS_URL}" # optional
+
+[[rpc_proxy]]
+chain_name = "eth-sepolia"
+path_prefix = "/eth-sepolia"
+provider_backend_group = ["${ETH_SEPOLIA_RPC}"]
+reorg_ttl = 12
+
+[[rpc_proxy]]
+chain_name = "op-sepolia"
+path_prefix = "/op-sepolia"
+provider_backend_group = ["${OP_SEPOLIA_RPC}"]
+reorg_ttl = 12
+
+[[rpc_proxy]]
+chain_name = "base-sepolia"
+path_prefix = "/base-sepolia"
+provider_backend_group = ["${BASE_SEPOLIA_RPC}"]
+reorg_ttl = 12
+
+[[rpc_proxy]]
+chain_name = "peptide-sepolia"
+path_prefix = "/peptide"
+provider_backend_group = ["${PEPTIDE_RPC}"]
+allowed_method_prefixes = ["eth_", "alchemy_", "net_"]
+reorg_ttl = 12

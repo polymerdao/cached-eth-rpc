@@ -1,11 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use actix_web::{error, web, App, Error, HttpResponse, HttpServer};
 use anyhow::Context;
 use cache::{lru_backend, memory_backend, CacheBackendFactory};
 use clap::Parser;
 use env_logger::Env;
-use reqwest::Url;
+use reqwest::header::CACHE_STATUS;
+use reqwest::{Response, StatusCode, Url};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -19,9 +20,11 @@ use tracing::debug;
 
 mod args;
 mod cache;
+mod config;
 mod json_rpc;
 mod metrics;
 mod rpc_cache_handler;
+mod rpc_provider_backend_group;
 mod utils;
 
 // Health check handler
@@ -54,6 +57,8 @@ async fn rpc_call(
     let mut uncached_requests: Vec<(RpcRequest, Option<CacheValue>)> = vec![];
     let mut request_id_index_map: HashMap<RequestId, usize> = HashMap::new();
 
+    let mut rcp_response: HttpResponse = HttpResponse::new(reqwest::StatusCode::OK);
+
     // Scope the redis connection
     {
         // retrieve the caching backend (memory, redis, etc)
@@ -83,15 +88,19 @@ async fn rpc_call(
                 }
             };
 
-            // Check if the method starts with an allowed prefix  
-            if !chain_state.allowed_prefixes.iter().any(|prefix| method.starts_with(prefix)) {
+            // Check if the method starts with an allowed prefix
+            if !chain_state
+                .allowed_prefixes
+                .iter()
+                .any(|prefix| method.starts_with(prefix))
+            {
                 tracing::warn!("Method '{}' is not allowed", method);
                 ordered_requests_result[index] = Some(JsonRpcResponse::from_error(
                     Some(id.clone()),
                     DefinedError::MethodNotFound,
                 ));
                 continue;
-            }            
+            }
 
             macro_rules! push_uncached_request_and_continue {
                 () => {{
@@ -193,7 +202,7 @@ async fn rpc_call(
     // prepare rpc and return the result future
     let rpc_result = utils::do_rpc_request(
         &data.http_client,
-        chain_state.rpc_url.clone(),
+        chain_state.rpc_providers[0].clone(),
         &rpc_requests,
     );
 
@@ -389,10 +398,14 @@ async fn main() -> std::io::Result<()> {
             .expect("fail to create cache backend factory");
 
         let mut chain_state = ChainState {
-            rpc_url: rpc_url.clone(),
+            rpc_providers: vec![rpc_url.clone()], // FIXME
             handlers: Default::default(),
             cache_factory,
-            allowed_prefixes: vec!["eth_".to_string(), "alchemy_".to_string(), "net_".to_string()],
+            allowed_prefixes: vec![
+                "eth_".to_string(),
+                "alchemy_".to_string(),
+                "net_".to_string(),
+            ],
         };
 
         for factory in &handler_factories {
@@ -480,11 +493,10 @@ fn new_cache_backend_factory(
 }
 
 struct ChainState {
-    rpc_url: Url,
+    rpc_providers: Vec<Url>,
     cache_factory: Box<dyn CacheBackendFactory>,
     handlers: HashMap<String, HandlerEntry>,
     allowed_prefixes: Vec<String>,
-
 }
 
 struct HandlerEntry {

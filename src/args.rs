@@ -33,6 +33,9 @@ pub struct Args {
         help = "Redis URL. If not suppiled, in memory cache backend will be used (example: redis://localhost:6379)."
     )]
     pub redis_url: Option<String>,
+
+    #[arg(short, long = "config", default_value = "config.toml")]
+    pub config_file: String,
 }
 
 fn endpoint_parser(s: &str) -> Result<(String, Url), String> {

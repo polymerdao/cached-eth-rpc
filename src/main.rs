@@ -392,7 +392,7 @@ async fn main() -> std::io::Result<()> {
             rpc_url: rpc_url.clone(),
             handlers: Default::default(),
             cache_factory,
-            allowed_prefixes: vec!["eth_".to_string(), "alchemy_".to_string(), "net_".to_string()],
+            allowed_prefixes: vec!["eth_".to_string(), "alchemy_".to_string(), "net_".to_string(), "debug_".to_string()],
         };
 
         for factory in &handler_factories {

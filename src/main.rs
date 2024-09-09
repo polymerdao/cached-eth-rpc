@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use actix_web::{error, web, App, Error, HttpResponse, HttpServer};
+use actix_web::{error, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use anyhow::Context;
 use cache::{lru_backend, memory_backend, CacheBackendFactory};
 use clap::Parser;
@@ -8,6 +8,7 @@ use env_logger::Env;
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{json, Value};
+use tracing::info;
 
 use crate::args::Args;
 use crate::cache::redis_backend::RedisBackendFactory;
@@ -33,12 +34,22 @@ async fn health_check() -> Result<HttpResponse, Error> {
 // RPC handler
 #[actix_web::post("/{chain}")]
 async fn rpc_call(
+    req: HttpRequest,
     path: web::Path<(String,)>,
     data: web::Data<AppState>,
     body: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
     let metrics = &data.metrics;
+    let conn_info = req.connection_info();
+    let client_ip = conn_info.realip_remote_addr().unwrap_or("unknown");
     let (chain,) = path.into_inner();
+
+    info!(
+        "Received RPC request from IP: {} for chain: {}",
+        client_ip, chain
+    );
+    info!("RPC request body: {}", body);
+
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -83,15 +94,19 @@ async fn rpc_call(
                 }
             };
 
-            // Check if the method starts with an allowed prefix  
-            if !chain_state.allowed_prefixes.iter().any(|prefix| method.starts_with(prefix)) {
+            // Check if the method starts with an allowed prefix
+            if !chain_state
+                .allowed_prefixes
+                .iter()
+                .any(|prefix| method.starts_with(prefix))
+            {
                 tracing::warn!("Method '{}' is not allowed", method);
                 ordered_requests_result[index] = Some(JsonRpcResponse::from_error(
                     Some(id.clone()),
                     DefinedError::MethodNotFound,
                 ));
                 continue;
-            }            
+            }
 
             macro_rules! push_uncached_request_and_continue {
                 () => {{
@@ -392,7 +407,12 @@ async fn main() -> std::io::Result<()> {
             rpc_url: rpc_url.clone(),
             handlers: Default::default(),
             cache_factory,
-            allowed_prefixes: vec!["eth_".to_string(), "alchemy_".to_string(), "net_".to_string(), "debug_".to_string()],
+            allowed_prefixes: vec![
+                "eth_".to_string(),
+                "alchemy_".to_string(),
+                "net_".to_string(),
+                "debug_".to_string(),
+            ],
         };
 
         for factory in &handler_factories {
@@ -484,7 +504,6 @@ struct ChainState {
     cache_factory: Box<dyn CacheBackendFactory>,
     handlers: HashMap<String, HandlerEntry>,
     allowed_prefixes: Vec<String>,
-
 }
 
 struct HandlerEntry {

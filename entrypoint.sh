@@ -1,19 +1,24 @@
 #!/bin/sh
 
+get_endpoints() {
+  # Loop through environment variables that match the pattern 'CER_*_RPC'
+  for var in $(env | grep -E '^CER_.*_RPC=' | sed 's/=.*//'); do
+      # Remove the 'CER_' prefix and the '_RPC' suffix
+      endpoint_name=$(echo "$var" | sed 's/^CER_//' | sed 's/_RPC$//')
+
+      # Replace underscores with dashes in the endpoint name
+      endpoint_name=$(echo "$endpoint_name" | tr '[:upper:]_' '[:lower:]-')
+
+      # Append the corresponding argument to the command
+      endpoints="$endpoints --endpoint=$endpoint_name=${!var}"
+  done
+  echo "$endpoints"
+}
+
+endpoints="$(get_endpoints)"
+
 # Ensure the script exits if any command fails
 set -e
 
-# Check if required environment variables are set
-if [ -z "$ETH_SEPOLIA_RPC" ] || [ -z "$OP_SEPOLIA_RPC" ] || [ -z "$BASE_SEPOLIA_RPC" ] || [ -z "$PEPTIDE_RPC" ]; then
-  echo "Error: One or more required environment variables are not set."
-  echo "Please set ETH_SEPOLIA_RPC, OP_SEPOLIA_RPC, BASE_SEPOLIA_RPC, and PEPTIDE_RPC."
-  exit 1
-fi
-
 # Run the cached-eth-rpc command with environment variables
-exec /app/cached-eth-rpc \
-  --endpoint=eth-sepolia="$ETH_SEPOLIA_RPC" \
-  --endpoint=op-sepolia="$OP_SEPOLIA_RPC" \
-  --endpoint=base-sepolia="$BASE_SEPOLIA_RPC" \
-  --endpoint=peptide="$PEPTIDE_RPC" \
- "$@"
+exec /app/cached-eth-rpc "$endpoints" "$@"

@@ -1,4 +1,7 @@
+use crate::utils;
+use futures::executor::block_on;
 use std::collections::HashMap;
+use std::slice::Iter;
 use std::time::{Duration, Instant};
 use url::Url;
 
@@ -30,6 +33,10 @@ where
         self.map.insert(key, value);
     }
 
+    pub fn keys_iter(&self) -> Iter<K> {
+        self.keys.iter()
+    }
+
     // Get a value by key
     fn get(&self, key: &K) -> Option<&V> {
         self.map.get(key)
@@ -56,7 +63,7 @@ where
     }
 }
 
-struct RpcProviderBackend {
+pub struct RpcProviderBackend {
     retry_ttl: Option<Instant>,
 }
 
@@ -94,31 +101,51 @@ impl FromIterator<(Url, RpcProviderBackend)> for IndexedMap<Url, RpcProviderBack
     }
 }
 
-struct RpcProviderBackendGroup {
+pub struct RpcProviderBackendGroup {
     backends: IndexedMap<Url, RpcProviderBackend>,
-    retry_timeout: Duration,
+    proxy_retry_timeout: Duration,
+    chain_id: u64,
 }
 
 impl RpcProviderBackendGroup {
     // Create a new ProviderGroup from a list of URLs
-    fn new(urls: Vec<Url>, retry_timeout: Duration) -> Self {
-        let backends = urls
+    pub fn new(rpc_urls: &Vec<Url>, proxy_retry_timeout: Duration) -> Self {
+        // queyr chain_id and validate all urls refer to the same chain
+        let mut chain_id: u64 = 0;
+        rpc_urls.iter().for_each(|rpc_url| {
+            let next_chain_id = block_on(utils::get_chain_id(
+                &reqwest::Client::new(),
+                rpc_url.as_str(),
+            ))
+            .expect(format!("failed to get chain id: {}", rpc_url).as_str());
+            if chain_id == 0 {
+                chain_id = next_chain_id;
+            } else if chain_id != next_chain_id {
+                panic!(
+                    "RPC {} has chain_id {}, but previous chain_id is {}!",
+                    rpc_url, next_chain_id, chain_id
+                );
+            }
+        });
+
+        let backends = rpc_urls
             .iter()
-            .map(|url| (url.clone(), RpcProviderBackend { retry_ttl: None }))
+            .map(|rpc_url| (rpc_url.clone(), RpcProviderBackend { retry_ttl: None }))
             .collect();
 
         Self {
             backends,
-            retry_timeout,
+            proxy_retry_timeout,
+            chain_id,
         }
     }
 
     // Get the next provider URL
-    fn next_provider(&mut self) -> Option<Url> {
+    pub fn next_provider(&mut self) -> Option<Url> {
         for _ in 0..self.backends.len() {
             match self.backends.next() {
                 Some((url, backend)) => {
-                    if backend.is_active(self.retry_timeout) {
+                    if backend.is_active(self.proxy_retry_timeout) {
                         return Some(url.clone());
                     } else {
                         continue;
@@ -130,7 +157,7 @@ impl RpcProviderBackendGroup {
         None
     }
 
-    fn set_inactive(&mut self, url: &Url) {
+    pub fn set_inactive(&mut self, url: &Url) {
         self.backends.insert(
             url.clone(),
             RpcProviderBackend {
@@ -139,8 +166,12 @@ impl RpcProviderBackendGroup {
         );
     }
 
-    fn set_active(&mut self, url: &Url) {
+    pub fn set_active(&mut self, url: &Url) {
         self.backends
             .insert(url.clone(), RpcProviderBackend { retry_ttl: None });
+    }
+
+    pub fn get_chain_id(&self) -> u64 {
+        self.chain_id
     }
 }

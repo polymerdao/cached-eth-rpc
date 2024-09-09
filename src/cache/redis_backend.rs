@@ -5,7 +5,7 @@ use serde_json::from_str;
 use super::{CacheBackend, CacheBackendFactory, CacheStatus, CacheValue};
 
 pub struct RedisBackendFactory {
-    chain_id: u64,
+    chain_id: u64, // TODO, remove this
     client: r2d2::Pool<redis::Client>,
     reorg_ttl: u32,
 }

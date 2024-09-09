@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use actix_web::{error, web, App, Error, HttpResponse, HttpServer};
 use anyhow::Context;
 use cache::{lru_backend, memory_backend, CacheBackendFactory};
@@ -9,15 +7,19 @@ use reqwest::header::CACHE_STATUS;
 use reqwest::{Response, StatusCode, Url};
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
+use crate::app_state::AppState;
 use crate::args::Args;
 use crate::cache::redis_backend::RedisBackendFactory;
 use crate::cache::{CacheStatus, CacheValue};
+use crate::config::AppConfig;
 use crate::json_rpc::{DefinedError, JsonRpcRequest, JsonRpcResponse, RequestId};
 use crate::rpc_cache_handler::RpcCacheHandler;
 
 use tracing::debug;
 
+mod app_state;
 mod args;
 mod cache;
 mod config;
@@ -42,6 +44,7 @@ async fn rpc_call(
 ) -> Result<HttpResponse, Error> {
     let metrics = &data.metrics;
     let (chain,) = path.into_inner();
+
     let chain_state = data
         .chains
         .get(&chain.to_uppercase())
@@ -379,11 +382,9 @@ async fn main() -> std::io::Result<()> {
 
     let args = Args::parse();
 
-    let mut app_state = AppState {
-        chains: Default::default(),
-        http_client: reqwest::Client::new(),
-        metrics: metrics::Metrics::new("cached_eth_rpc"),
-    };
+    let cfg = AppConfig::new(args.config_file);
+
+    let mut app_state = AppState::new("cached_eth_rpc")
 
     let handler_factories = rpc_cache_handler::factories();
 
@@ -443,61 +444,6 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-fn new_cache_backend_factory(
-    args: &Args,
-    chain_id: u64,
-) -> anyhow::Result<Box<dyn CacheBackendFactory>> {
-    let factory: Box<dyn CacheBackendFactory> = match args.cache_type.as_str() {
-        "redis" => match &args.redis_url {
-            Some(redis_url) => {
-                tracing::info!("Using redis cache backend");
-
-                let client = redis::Client::open(redis_url.as_ref())
-                    .context("fail to create redis client")?;
-
-                let conn_pool = r2d2::Pool::builder()
-                    .max_size(300)
-                    .test_on_check_out(false)
-                    .build(client)
-                    .context("fail to create redis connection pool")?;
-                let factory = RedisBackendFactory::new(chain_id, conn_pool, args.reorg_ttl);
-
-                Box::new(factory)
-            }
-            None => {
-                return Err(anyhow::anyhow!(
-                    "Must specify redis url when using redis cache backend!"
-                ));
-            }
-        },
-        "memory" => {
-            tracing::info!("Using in memory cache backend");
-            Box::new(memory_backend::MemoryBackendFactory::new(args.reorg_ttl))
-        }
-        "lru" => {
-            tracing::info!("Using in LRU cache backend");
-            Box::new(lru_backend::LruBackendFactory::new(
-                args.lru_max_items,
-                args.reorg_ttl,
-            ))
-        }
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Unknown cache backend specified: {}!",
-                args.cache_type
-            ));
-        }
-    };
-
-    Ok(factory)
-}
-
-struct ChainState {
-    rpc_providers: Vec<Url>,
-    cache_factory: Box<dyn CacheBackendFactory>,
-    handlers: HashMap<String, HandlerEntry>,
-    allowed_prefixes: Vec<String>,
-}
 
 struct HandlerEntry {
     inner: Box<dyn RpcCacheHandler>,
@@ -515,12 +461,6 @@ impl HandlerEntry {
     ) -> anyhow::Result<(bool, CacheValue)> {
         self.inner.extract_cache_value(result, reorg_ttl)
     }
-}
-
-pub struct AppState {
-    chains: HashMap<String, ChainState>,
-    http_client: reqwest::Client,
-    metrics: metrics::Metrics,
 }
 
 #[derive(Debug, Clone)]

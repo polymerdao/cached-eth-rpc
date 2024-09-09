@@ -11,18 +11,21 @@ chain_name = "eth-sepolia"
 path_prefix = "/eth-sepolia"
 provider_backend_group = ["${ETH_SEPOLIA_RPC}"]
 reorg_ttl = 12
+proxy_retry_timeout = 30
 
 [[rpc_proxy]]
 chain_name = "op-sepolia"
 path_prefix = "/op-sepolia"
 provider_backend_group = ["${OP_SEPOLIA_RPC}"]
 reorg_ttl = 12
+proxy_retry_timeout = 30
 
 [[rpc_proxy]]
 chain_name = "base-sepolia"
 path_prefix = "/base-sepolia"
 provider_backend_group = ["${BASE_SEPOLIA_RPC}"]
 reorg_ttl = 12
+proxy_retry_timeout = 30
 
 [[rpc_proxy]]
 chain_name = "peptide-sepolia"
@@ -30,3 +33,4 @@ path_prefix = "/peptide"
 provider_backend_group = ["${PEPTIDE_RPC}"]
 allowed_method_prefixes = ["eth_", "alchemy_", "net_"]
 reorg_ttl = 12
+proxy_retry_timeout = 30

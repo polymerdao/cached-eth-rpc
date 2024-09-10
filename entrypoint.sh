@@ -10,7 +10,7 @@ get_endpoints() {
       endpoint_name=$(echo "$endpoint_name" | tr '[:upper:]_' '[:lower:]-')
 
       # Append the corresponding argument to the command
-      endpoints="$endpoints --endpoint=$endpoint_name=${!var}"
+      endpoints="$endpoints --endpoint=$endpoint_name=$(eval echo \"\${$var}\")"
   done
   echo "$endpoints"
 }

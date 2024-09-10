@@ -21,4 +21,4 @@ endpoints="$(get_endpoints)"
 set -e
 
 # Run the cached-eth-rpc command with environment variables
-exec /app/cached-eth-rpc "$endpoints" "$@"
+exec /app/cached-eth-rpc $endpoints "$@"

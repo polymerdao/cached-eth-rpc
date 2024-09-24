@@ -1,5 +1,5 @@
 use actix_web::{web, Error, HttpResponse};
-use prometheus::{Counter, Encoder, Registry, TextEncoder};
+use prometheus::{Counter, Encoder, Registry, TextEncoder, IntCounterVec};
 
 pub struct Metrics {
     pub registry: prometheus::Registry,
@@ -8,6 +8,7 @@ pub struct Metrics {
     pub cache_expired_miss_counter: Counter,
     pub cache_uncacheable_counter: Counter,
     pub error_counter: Counter,
+    pub method_call_counter: IntCounterVec,
 }
 
 // Function to add a prefix to the metric names
@@ -27,6 +28,21 @@ fn register_counter_with_prefix(
     let counter = prometheus::Counter::with_opts(opts).unwrap();
     registry.register(Box::new(counter.clone())).unwrap();
     counter
+}
+
+// Create a function to register IntCounterVec with a prefix
+fn register_int_counter_vec_with_prefix(
+    registry: &Registry,
+    prefix: &str,
+    name: &str,
+    description: &str,
+    labels: &[&str],
+) -> IntCounterVec {
+    let name = add_prefix(prefix, name);
+    let opts = prometheus::Opts::new(name, description);
+    let counter_vec = IntCounterVec::new(opts, labels).unwrap();
+    registry.register(Box::new(counter_vec.clone())).unwrap();
+    counter_vec
 }
 
 impl Metrics {
@@ -63,6 +79,13 @@ impl Metrics {
             "error_total",
             "Total number of errors.",
         );
+        let method_call_counter = register_int_counter_vec_with_prefix(
+            &registry,
+            prefix,
+            "method_call_total",
+            "Total number of method calls per chain",
+            &["chain", "method", "cache"],
+        );
 
         Self {
             registry,
@@ -71,6 +94,7 @@ impl Metrics {
             cache_expired_miss_counter,
             cache_uncacheable_counter,
             error_counter,
+            method_call_counter,
         }
     }
 }

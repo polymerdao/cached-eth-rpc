@@ -110,23 +110,26 @@ async fn rpc_call(
 
             macro_rules! push_uncached_request_and_continue {
                 () => {{
-                    let rpc_request = RpcRequest::new_uncachable(index, id, method, params);
+                    let rpc_request = RpcRequest::new_uncachable(index, id, method.clone(), params);
                     request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
                     uncached_requests.push((rpc_request, None));
+                    metrics.method_call_counter.with_label_values(&[&chain, &method, "miss"]).inc();
                     continue;
                 }};
 
                 ($key: expr) => {{
-                    let rpc_request = RpcRequest::new(index, id, method, params, $key);
+                    let rpc_request = RpcRequest::new(index, id, method.clone(), params, $key);
                     request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
                     uncached_requests.push((rpc_request, None));
+                    metrics.method_call_counter.with_label_values(&[&chain, &method, "miss"]).inc();
                     continue;
                 }};
 
                 ($key: expr, $val: expr) => {{
-                    let rpc_request = RpcRequest::new(index, id, method, params, $key);
+                    let rpc_request = RpcRequest::new(index, id, method.clone(), params, $key);
                     request_id_index_map.insert(rpc_request.id.clone(), uncached_requests.len());
                     uncached_requests.push((rpc_request, Some($val)));
+                    metrics.method_call_counter.with_label_values(&[&chain, &method, "miss"]).inc();
                     continue;
                 }};
             }
@@ -162,6 +165,7 @@ async fn rpc_call(
                 Ok(CacheStatus::Cached { key, value }) => {
                     if !value.is_expired() {
                         metrics.cache_hit_counter.inc();
+                        metrics.method_call_counter.with_label_values(&[&chain, &method, "hit"]).inc();
                         tracing::info!("cache hit for method {} with key {}", method, key);
                         ordered_requests_result[index] =
                             Some(JsonRpcResponse::from_result(id, value.data));

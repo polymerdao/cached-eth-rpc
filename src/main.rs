@@ -94,6 +94,9 @@ async fn rpc_call(
                 }
             };
 
+            // Increment the method call counter
+            metrics.method_call_counter.with_label_values(&[&chain, &method]).inc();
+
             // Check if the method starts with an allowed prefix
             if !chain_state
                 .allowed_prefixes
